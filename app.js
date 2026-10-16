@@ -452,5 +452,47 @@
     navigator.serviceWorker.register('sw.js').catch(function () {});
   }
   window.__c4m = { S: S, ui: ui };
-  render();
+
+  /* ---------- passcode lock ----------
+   * Keeps casual visitors out. Not strong security: the code is public.
+   * Once unlocked, this phone stays unlocked (remembered in localStorage).
+   */
+  var PIN_HASH = '2b85f57d9c4cefb8f904bb69495d81c0425c023bf0240bc5d50c160bbd1cac7a';
+  var UNLOCK_KEY = 'caddy4me.unlocked';
+  function sha256(s) {
+    return crypto.subtle.digest('SHA-256', new TextEncoder().encode(s)).then(function (b) {
+      return Array.prototype.map.call(new Uint8Array(b), function (x) { return ('0' + x.toString(16)).slice(-2); }).join('');
+    });
+  }
+  function isUnlocked() { try { return localStorage.getItem(UNLOCK_KEY) === PIN_HASH; } catch (e) { return false; } }
+  function showLock() {
+    var entry = '';
+    var keys = ['1', '2', '3', '4', '5', '6', '7', '8', '9', '', '0', '⌫'];
+    function draw(msg) {
+      app.innerHTML = '<div class="pad lock"><h1>Caddy4Me</h1><p class="sub">Enter your passcode</p>' +
+        '<div class="dots">' + [0, 1, 2, 3].map(function (i) { return '<span class="' + (i < entry.length ? 'on' : '') + '"></span>'; }).join('') + '</div>' +
+        '<p class="warn" id="lockmsg">' + (msg || '&nbsp;') + '</p>' +
+        '<div class="keypad">' + keys.map(function (k) { return k ? '<button data-k="' + k + '">' + k + '</button>' : '<span></span>'; }).join('') + '</div></div>';
+    }
+    function onKey(e) {
+      var b = e.target.closest('[data-k]'); if (!b) return;
+      e.stopPropagation();
+      var k = b.dataset.k;
+      if (k === '⌫') entry = entry.slice(0, -1); else if (entry.length < 4) entry += k;
+      draw();
+      if (entry.length === 4) {
+        sha256('caddy4me:' + entry).then(function (h) {
+          if (h === PIN_HASH) {
+            try { localStorage.setItem(UNLOCK_KEY, h); } catch (err) { /* ignore */ }
+            app.removeEventListener('click', onKey, true);
+            render();
+          } else { entry = ''; draw('Wrong passcode'); }
+        });
+      }
+    }
+    app.addEventListener('click', onKey, true);
+    draw();
+  }
+
+  if (isUnlocked()) render(); else showLock();
 })();

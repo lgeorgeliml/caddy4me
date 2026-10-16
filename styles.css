@@ -97,6 +97,15 @@ table { width: 100%; border-collapse: collapse; font-size: 15px; margin-top: 8px
 th, td { border-bottom: 2px solid var(--soft); padding: 6px 2px; text-align: center; }
 th { font-size: 13px; text-transform: uppercase; }
 
+/* passcode lock */
+.lock { text-align: center; padding-top: 48px; }
+.dots { display: flex; justify-content: center; gap: 18px; margin: 20px 0 4px; }
+.dots span { width: 22px; height: 22px; border-radius: 50%; border: 3px solid var(--ink); }
+.dots span.on { background: var(--accent); border-color: var(--accent); }
+.keypad { display: grid; grid-template-columns: repeat(3, 84px); gap: 14px; justify-content: center; margin-top: 8px; }
+.keypad button { height: 72px; border: 3px solid var(--ink); border-radius: 16px; background: var(--bg); font-size: 30px; font-weight: 900; }
+.keypad button:active { background: var(--soft); }
+
 /* modal */
 .modal { position: fixed; inset: 0; z-index: 20; background: rgba(0,0,0,.55); display: flex; align-items: flex-end; justify-content: center; }
 .modal[hidden] { display: none; }
