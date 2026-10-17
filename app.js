@@ -47,7 +47,7 @@
   /* ---------- navigation ---------- */
   function go(screen) {
     if (ui.screen === 'hole' && screen !== 'hole') stopHole();
-    ui.screen = screen; ui.confirmReset = false;
+    ui.screen = screen; ui.confirmReset = false; ui.confirmDiscard = false; ui.confirmDelete = false;
     closeModal();
     window.scrollTo(0, 0);
     render();
@@ -68,7 +68,8 @@
     var nextHole = open ? firstOpenHole(r) + 1 : 1;
     return '<div class="pad"><h1>Caddy4Me</h1><p class="sub">Your caddie at Melville Glades</p>' +
       (open ? '<button class="btn primary" data-a="resume">Resume round – Hole ' + nextHole + '</button>' +
-              '<button class="btn" data-a="newRound">Start a new round</button>'
+              '<button class="btn" data-a="newRound">Start a new round</button>' +
+              '<button class="btn small danger" data-a="discard">' + (ui.confirmDiscard ? 'Tap again to discard \u2013 nothing is saved' : 'Discard this round') + '</button>'
             : '<button class="btn primary" data-a="newRound">Start round – Melville Glades</button>') +
       '<button class="btn" data-a="bag">My Bag</button>' +
       '<button class="btn" data-a="past">Past rounds</button>' +
@@ -355,7 +356,13 @@
       '<h2>Hole by hole</h2><table><thead><tr><th>#</th><th>Par</th><th>Sc</th><th>Pt</th><th>GIR</th><th>App</th><th>U&amp;D</th><th>Pen</th><th>Wst</th></tr></thead><tbody>' + rows + '</tbody></table>' +
       '<p class="muted">Tap a hole to edit it.</p>' +
       (!r.done && r.id === S.currentRoundId ? '<button class="btn primary" data-a="resume">Back to the round</button>' : '') +
-      '<button class="btn small" data-a="export">Export backup</button><button class="btn small" data-a="home">Home</button></div>';
+      '<button class="btn small" data-a="export">Export backup</button><button class="btn small" data-a="home">Home</button>' +
+      '<button class="btn small danger" data-a="deleteRound">' + (ui.confirmDelete ? 'Tap again to delete this round for good' : 'Delete this round') + '</button></div>';
+  }
+  function removeRound(id) {
+    S.rounds = S.rounds.filter(function (r) { return r.id !== id; });
+    if (S.currentRoundId === id) S.currentRoundId = null;
+    save();
   }
   function pastHtml() {
     var list = S.rounds.slice().reverse().map(function (r) {
@@ -436,6 +443,15 @@
     appr: function (v) { ui.card.approach = ui.card.approach === v ? null : v; ui.card.touched.approach = true; render(); },
     ud: function (v) { ui.card.upDown = v === '1'; ui.card.touched.upDown = true; render(); },
     saveCard: saveCard,
+    discard: function () {
+      var r = cur(); if (!r) return;
+      if (!ui.confirmDiscard) { ui.confirmDiscard = true; render(); return; }
+      removeRound(r.id); go('home');
+    },
+    deleteRound: function () {
+      if (!ui.confirmDelete) { ui.confirmDelete = true; render(); return; }
+      removeRound(ui.summaryId); ui.summaryId = null; go('past');
+    },
     resetBag: function () {
       if (!ui.confirmReset) { ui.confirmReset = true; render(); return; }
       S.bag = E.clone(E.DEFAULT_BAG); save(); ui.confirmReset = false; render();
@@ -457,7 +473,7 @@
    * Keeps casual visitors out. Not strong security: the code is public.
    * Once unlocked, this phone stays unlocked (remembered in localStorage).
    */
-  var PIN_HASH = '2b85f57d9c4cefb8f904bb69495d81c0425c023bf0240bc5d50c160bbd1cac7a';
+  var PIN_HASH = 'a53c168b2d84e5a698736c5de6374d76113ad1cd44b6760acc55845c68f5b67c';
   var UNLOCK_KEY = 'caddy4me.unlocked';
   function sha256(s) {
     return crypto.subtle.digest('SHA-256', new TextEncoder().encode(s)).then(function (b) {

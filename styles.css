@@ -18,6 +18,7 @@ h2 { font-size: 22px; margin: 20px 0 8px; }
 .btn { display: block; width: 100%; min-height: 60px; margin: 12px 0; padding: 12px 16px;
   border: 3px solid var(--ink); border-radius: 12px; background: var(--bg); font-size: 21px; font-weight: 700; text-align: center; }
 .btn.primary { background: var(--accent); border-color: var(--accent); color: var(--accent-ink); }
+.btn.danger { border-color: var(--warn); color: var(--warn); }
 .btn.small { min-height: var(--tap); font-size: 18px; margin: 8px 0; }
 .btn:active, .chip:active, .step button:active { transform: scale(0.97); }
 .row { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
