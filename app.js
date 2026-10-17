@@ -22,7 +22,8 @@
     return { version: 1, bag: E.clone(E.DEFAULT_BAG),
       settings: { windSource: 'live', manual: { rel: 0, speed: 0 } },
       course: { name: 'Melville Glades', pars: [null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null] },
-      rounds: [], currentRoundId: null, wind: null };
+      rounds: [], currentRoundId: null, wind: null,
+      prep: { thoughts: [], videos: [] } };
   }
   function load() {
     try {
@@ -60,6 +61,7 @@
     else if (s === 'summary') app.innerHTML = summaryHtml();
     else if (s === 'past') app.innerHTML = pastHtml();
     else if (s === 'bag') app.innerHTML = bagHtml();
+    else if (s === 'prep') app.innerHTML = prepHtml();
   }
 
   /* ---------- home ---------- */
@@ -71,6 +73,7 @@
               '<button class="btn" data-a="newRound">Start a new round</button>' +
               '<button class="btn small danger" data-a="discard">' + (ui.confirmDiscard ? 'Tap again to discard \u2013 nothing is saved' : 'Discard this round') + '</button>'
             : '<button class="btn primary" data-a="newRound">Start round – Melville Glades</button>') +
+      '<button class="btn" data-a="prep">Before your round \u2013 videos &amp; swing thoughts</button>' +
       '<button class="btn" data-a="bag">My Bag</button>' +
       '<button class="btn" data-a="past">Past rounds</button>' +
       '<button class="btn small" data-a="export">Export backup</button>' +
@@ -396,6 +399,32 @@
     save();
   });
 
+  /* ---------- before your round ---------- */
+  function safeUrl(u) {
+    u = String(u || '').trim();
+    if (!/^https?:\/\//i.test(u)) u = 'https://' + u;
+    try { var x = new URL(u); return (x.protocol === 'https:' || x.protocol === 'http:') && x.hostname.indexOf('.') > 0 ? x.href : null; } catch (e) { return null; }
+  }
+  function prepHtml() {
+    var P = S.prep, r = cur(), open = r && !r.done;
+    var th = P.thoughts.map(function (t, i) {
+      return '<div class="thought"><div class="ttext">' + esc(t) + '</div><button class="chip" data-a="delThought" data-v="' + i + '" aria-label="Remove">\u2715</button></div>';
+    }).join('') || '<p class="muted">No swing thoughts yet.</p>';
+    var vids = P.videos.map(function (v, i) {
+      return '<div class="video"><a class="btn small vlink" href="' + esc(v.url) + '" target="_blank" rel="noopener">\u25b6 ' + esc(v.title) + '</a>' +
+        '<button class="chip" data-a="delVideo" data-v="' + i + '" aria-label="Remove">\u2715</button></div>';
+    }).join('') || '<p class="muted">No videos yet.</p>';
+    return '<div class="bar"><div class="nav"><button class="arrow" data-a="home" aria-label="Home">\u2302</button><div class="title">Before your round</div><span style="width:56px"></span></div></div>' +
+      '<div class="pad"><h2>Swing thoughts</h2>' + th +
+      '<div class="addrow"><input id="newThought" class="textin" maxlength="120" placeholder="e.g. Smooth tempo, finish high"><button class="btn small primary" data-a="addThought">Add thought</button></div>' +
+      '<h2>Videos</h2>' + vids +
+      '<div class="addrow"><input id="newVTitle" class="textin" maxlength="60" placeholder="Title, e.g. Wedge distance control">' +
+      '<input id="newVUrl" class="textin" inputmode="url" placeholder="Paste YouTube link"><p class="warn" id="vmsg"></p>' +
+      '<button class="btn small primary" data-a="addVideo">Add video</button></div>' +
+      '<p class="muted">Tip: in YouTube tap Share \u2192 Copy link, then paste it here. Videos open in the YouTube app.</p>' +
+      '<button class="btn primary" data-a="' + (open ? 'resume' : 'newRound') + '">' + (open ? 'Resume round' : 'Start round \u2013 Melville Glades') + '</button></div>';
+  }
+
   /* ---------- export ---------- */
   function exportBackup() {
     var blob = new Blob([JSON.stringify(S, null, 2)], { type: 'application/json' });
@@ -443,6 +472,18 @@
     appr: function (v) { ui.card.approach = ui.card.approach === v ? null : v; ui.card.touched.approach = true; render(); },
     ud: function (v) { ui.card.upDown = v === '1'; ui.card.touched.upDown = true; render(); },
     saveCard: saveCard,
+    prep: function () { go('prep'); },
+    addThought: function () {
+      var t = $('newThought').value.trim(); if (!t) return;
+      S.prep.thoughts.push(t); save(); render();
+    },
+    delThought: function (v) { S.prep.thoughts.splice(+v, 1); save(); render(); },
+    addVideo: function () {
+      var url = safeUrl($('newVUrl').value), title = $('newVTitle').value.trim();
+      if (!url) { $('vmsg').textContent = 'That link doesn\u2019t look right \u2013 paste the full YouTube link.'; return; }
+      S.prep.videos.push({ title: title || 'Video ' + (S.prep.videos.length + 1), url: url }); save(); render();
+    },
+    delVideo: function (v) { S.prep.videos.splice(+v, 1); save(); render(); },
     discard: function () {
       var r = cur(); if (!r) return;
       if (!ui.confirmDiscard) { ui.confirmDiscard = true; render(); return; }
