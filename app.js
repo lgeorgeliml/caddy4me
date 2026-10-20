@@ -319,7 +319,7 @@
     ui.holeIdx = idx;
     ui.card = { par: par, si: holeSI(r, idx), score: saved ? h.score : par, putts: saved ? h.putts : 2,
       chipIn: !!h.chipIn, fairway: h.fairway || null, approach: E.normApproach(h.approach) || null,
-      upDown: h.upDown, sandSave: h.sandSave != null ? h.sandSave : null,
+      upDown: h.upDown, sandSave: h.sandSave != null ? h.sandSave : null, girOverride: saved ? (typeof h.gir === 'boolean' ? h.gir : !!(E.holeStats(h) || {}).gir) : false, // new card: GIR off until tapped
       sand: h.sand || 0, penalties: h.penalties || 0, wasted: saved ? (h.wasted || 0) : 0,
       touched: { approach: saved, upDown: saved, sandSave: saved, wasted: saved } };
     autoCard();
@@ -329,14 +329,13 @@
     var c = ui.card;
     c.putts = Math.max(0, Math.min(c.putts, c.score));
     if (c.putts > 0) c.chipIn = false;
-    var st = E.holeStats(c);
-    c.gir = st.gir;
-    if (!c.touched.approach) c.approach = st.gir ? 'hit' : (c.approach === 'hit' ? null : c.approach);
-    if (!c.touched.upDown) c.upDown = st.gir ? null : E.suggestUpDown(c);
-    if (st.gir) c.upDown = null;
-    var sandOk = !st.gir && c.sand >= 1;
-    if (!sandOk) c.sandSave = null;
-    else if (!c.touched.sandSave) c.sandSave = c.upDown === true;
+    // Nothing is pre-selected: GIR, Up & Down and Sand Save stay off until George taps them (MiScore style)
+    c.gir = c.girOverride === true;
+    if (c.gir) { c.upDown = null; c.sandSave = null; }
+    else {
+      if (c.upDown == null) c.upDown = false;
+      if (c.sandSave == null) c.sandSave = false;
+    }
     if (!c.touched.wasted) c.wasted = E.defaultWasted(c.putts);
     var r = cur();
     c.strokes = E.strokesOnHole(roundDH(r), c.si);
@@ -346,7 +345,7 @@
     var r = cur(), c = ui.card;
     var hs = holesWithPoints(r).map(function (h, i) {
       if (i !== ui.holeIdx) return h;
-      return { par: c.par, score: c.score, putts: c.putts, fairway: c.par >= 4 ? c.fairway : null, approach: c.approach,
+      return { par: c.par, score: c.score, putts: c.putts, gir: c.gir, fairway: c.par >= 4 ? c.fairway : null, approach: c.approach,
         upDown: c.upDown, sandSave: c.sandSave, sand: c.sand, penalties: c.penalties, wasted: c.wasted, chipIn: c.chipIn, points: c.points };
     });
     return E.roundSummary(hs);
@@ -377,13 +376,13 @@
       '<div class="pad cardpad">' +
       '<div class="scorebox"><div class="sb"><div class="k">Score</div><div class="cstep"><button class="circ" data-a="step" data-v="score:-1" aria-label="Score minus">−</button>' +
       '<span class="bigv">' + c.score + '</span><button class="circ" data-a="step" data-v="score:1" aria-label="Score plus">+</button></div><div class="sub2">' + signed(toPar) + ' to par</div></div>' +
-      '<div class="sb pts"><div class="k">Stableford</div><div class="bigv">' + c.points + '</div><div class="sub2">points · round ' + T.points + '</div></div></div>' +
+      '<div class="sb pts"><div class="k">Stableford</div><div class="bigv">' + c.points + '</div><div class="sub2">points<br>Round: ' + T.points + '</div></div></div>' +
       cstep('putts', 'Putts', null, null, '<div class="pills">' + toggle('chip', 'Chip In', c.chipIn, true) + '<span class="pill">Total putts: <b>' + T.putts + '</b></span></div>') +
       fw +
-      '<div class="sec"><h3>Green in regulation</h3><div class="pills">' + toggle('noop', c.gir ? 'Yes' : 'No', c.gir, false) +
-      '<span class="pill">Total: <b>' + T.gir + ' / ' + T.holes + '</b></span></div><div class="hint">Worked out from score and putts</div></div>' +
+      '<div class="sec"><h3>Green in regulation</h3><div class="pills">' + toggle('gir', 'Green hit', c.gir, true) +
+      '<span class="pill">Total: <b>' + T.gir + ' / ' + T.holes + '</b></span></div></div>' +
       '<div class="sec"><h3>Approach shot</h3><div class="grid9">' + grid + '</div>' +
-      '<div class="pills">' + toggle('ud', 'Up &amp; Down', c.upDown === true, !c.gir) + toggle('ss', 'Sand Save', c.sandSave === true, !c.gir && c.sand >= 1) + '</div>' +
+      '<div class="pills">' + toggle('ud', 'Up &amp; Down', c.upDown === true, !c.gir) + toggle('ss', 'Sand Save', c.sandSave === true, !c.gir) + '</div>' +
       '<div class="pills"><span class="pill">U&amp;D <b>' + T.udMade + ' / ' + T.ud + '</b></span><span class="pill">Sand saves <b>' + T.sandSaved + ' / ' + T.sandAtt + '</b></span></div></div>' +
       cstep('sand', 'Sand shots', 'Total: <b>' + T.sandShots + '</b>') +
       cstep('wasted', 'Wasted shots', 'Total: <b>' + T.wasted + '</b>', 'Duffs, shanks, whiffs, 3-putts, chips not on') +
@@ -393,7 +392,7 @@
   function saveCard() {
     var r = cur(), c = ui.card, h = r.holes[ui.holeIdx];
     if (r.dailyHcp == null) r.dailyHcp = currentDH();
-    h.par = c.par; h.si = c.si; h.score = c.score; h.putts = c.putts; h.chipIn = c.chipIn;
+    h.par = c.par; h.si = c.si; h.score = c.score; h.putts = c.putts; h.chipIn = c.chipIn; h.gir = c.gir;
     h.fairway = c.par >= 4 ? c.fairway : null; h.approach = c.approach;
     h.upDown = c.gir ? null : c.upDown; h.sandSave = c.sandSave; h.sand = c.sand; h.penalties = c.penalties; h.wasted = c.wasted;
     h.points = c.points;
@@ -442,14 +441,22 @@
     function tile(k, v, sub) { return '<div class="tile"><div class="k">' + k + '</div><div class="v">' + v + '</div>' + (sub ? '<div class="muted">' + sub + '</div>' : '') + '</div>'; }
     function pc(v) { return v == null ? '–' : v + '%'; }
     var fwMark = { hit: '✓', left: '←', right: '→' };
-    var rows = hs.map(function (h, i) {
+    function totRow(label, from, to) {
+      var part = hs.slice(from, to), t = E.roundSummary(part);
+      var par = part.reduce(function (a, h, j) { return a + (h.par || holePar(r, from + j)); }, 0);
+      return '<tr class="tot"><td>' + label + '</td><td>' + par + '</td><td>' + (t.holes ? t.score : '') + '</td><td>' + (t.pointsHoles ? t.points : '') + '</td>' +
+        '<td>' + (t.holes ? t.putts : '') + '</td><td>' + (t.fw ? t.fwHit + '/' + t.fw : '') + '</td><td>' + (t.statHoles ? t.gir : '') + '</td>' +
+        '<td>' + (t.ud ? t.udMade + '/' + t.ud : '') + '</td><td>' + (t.holes ? t.penalties : '') + '</td><td>' + (t.holes ? t.wasted : '') + '</td></tr>';
+    }
+    var rowList = hs.map(function (h, i) {
       if (h.score == null) return '<tr><td>' + h.n + '</td><td>' + holePar(r, i) + '</td><td colspan="8">–</td></tr>';
       if (h.pickup) return '<tr><td>' + h.n + '</td><td>' + h.par + '</td><td><b>P</b></td><td><b>' + (h.points || 0) + '</b></td><td colspan="6" class="muted">picked up \u00b7 counted as ' + h.score + '</td></tr>';
       var st = E.holeStats(h);
       return '<tr data-a="editHole" data-v="' + i + '"><td>' + h.n + '</td><td>' + h.par + '</td><td><b>' + h.score + '</b></td><td><b>' + h.points + '</b></td><td>' + (h.putts != null ? h.putts : '') + '</td>' +
         '<td>' + (h.par >= 4 && h.fairway ? fwMark[h.fairway] : '') + '</td><td>' + (st.gir ? '✓' : '') + '</td>' +
         '<td>' + (st.upDownAttempt ? (h.upDown ? '✓' : '✗') : '') + '</td><td>' + (h.penalties || '') + '</td><td>' + (h.wasted || '') + '</td></tr>';
-    }).join('');
+    });
+    var rows = rowList.slice(0, 9).join('') + totRow('OUT', 0, 9) + rowList.slice(9).join('') + totRow('IN', 9, 18) + totRow('TOT', 0, 18);
     var grid = GRID.map(function (g) { return '<div class="gcell' + (g[0] === 'hit' ? ' hitc' : '') + '"><span>' + g[1] + '</span><b>' + s.miss[g[0]] + '</b></div>'; }).join('');
     return '<div class="bar"><div class="nav"><button class="arrow" data-a="home" aria-label="Home">⌂</button><div class="title">Round ' + esc(r.date) + '</div><span style="width:56px"></span></div></div>' +
       '<div class="pad"><div class="tiles">' +
@@ -609,11 +616,26 @@
       if (f === 'wasted') c.touched.wasted = true;
       autoCard(); rerenderCard();
     },
-    appr: function (v) { ui.card.approach = ui.card.approach === v ? null : v; ui.card.touched.approach = true; autoCard(); rerenderCard(); },
+    appr: function (v) {
+      var c = ui.card; c.approach = c.approach === v ? null : v; c.touched.approach = true;
+      if (c.approach === 'hit') c.girOverride = true; else if (c.approach) c.girOverride = false; // a miss means no GIR
+      autoCard(); rerenderCard();
+    },
+    gir: function () {
+      var c = ui.card; c.girOverride = !c.gir;
+      if (c.girOverride) { c.approach = 'hit'; c.touched.approach = true; }
+      else if (c.approach === 'hit') { c.approach = null; c.touched.approach = true; }
+      autoCard(); rerenderCard();
+    },
     fw: function (v) { ui.card.fairway = ui.card.fairway === v ? null : v; rerenderCard(); },
     chip: function () { var c = ui.card, on = !c.chipIn; if (on) c.putts = 0; autoCard(); c.chipIn = on; rerenderCard(); },
     ud: function () { var c = ui.card; if (c.gir) return; c.upDown = !(c.upDown === true); c.touched.upDown = true; autoCard(); rerenderCard(); },
-    ss: function () { var c = ui.card; if (c.gir || c.sand < 1) return; c.sandSave = !(c.sandSave === true); c.touched.sandSave = true; rerenderCard(); },
+    ss: function () {
+      var c = ui.card; if (c.gir) return;
+      c.sandSave = !(c.sandSave === true); c.touched.sandSave = true;
+      if (c.sandSave && c.sand < 1) c.sand = 1; // a sand save needs a sand shot
+      autoCard(); rerenderCard();
+    },
     noop: function () {},
     settings: function () { go('settings'); },
     saveCard: saveCard,

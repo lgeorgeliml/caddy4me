@@ -109,11 +109,13 @@ th { font-size: 13px; text-transform: uppercase; }
 /* hole card v0.2 (MiScore-style sections) */
 .tsub { display: block; font-size: 15px; font-weight: 700; }
 .cardpad { padding-bottom: 110px; }
-.scorebox { display: flex; border: 3px solid var(--ink); border-radius: 16px; margin-bottom: 8px; }
-.scorebox .sb { flex: 1; text-align: center; padding: 12px 6px; }
+.scorebox { display: grid; grid-template-columns: minmax(0, 3fr) minmax(0, 2fr); border: 3px solid var(--ink); border-radius: 16px; margin-bottom: 8px; overflow: hidden; }
+.scorebox .sb { min-width: 0; text-align: center; padding: 12px 4px; }
+.scorebox .cstep { gap: 8px; }
+.scorebox .circ { width: 52px; height: 52px; font-size: 26px; flex: none; }
 .scorebox .sb + .sb { border-left: 2px solid var(--soft); }
-.scorebox .k { font-size: 15px; font-weight: 800; text-transform: uppercase; letter-spacing: .04em; }
-.scorebox .bigv { font-size: 56px; font-weight: 900; line-height: 1.05; min-width: 52px; display: inline-block; }
+.scorebox .k { font-size: 14px; font-weight: 800; text-transform: uppercase; letter-spacing: .02em; overflow-wrap: anywhere; }
+.scorebox .bigv { font-size: 52px; font-weight: 900; line-height: 1.05; min-width: 40px; display: inline-block; }
 .scorebox .pts .bigv { color: var(--accent); }
 .scorebox .sub2 { font-size: 16px; font-weight: 700; }
 .sec { text-align: center; padding: 14px 0 12px; border-bottom: 2px solid var(--soft); }
@@ -149,6 +151,9 @@ th { font-size: 13px; text-transform: uppercase; }
 .gcell b { font-size: 22px; }
 .gcell.hitc { border-color: var(--accent); background: #E8F3EC; }
 .htab { font-size: 14px; }
+.htab thead th { background: var(--accent); color: var(--accent-ink); padding: 8px 2px; }
+.htab tr.tot td { background: var(--accent); color: var(--accent-ink); font-weight: 900; font-size: 15px; border-bottom: 2px solid var(--bg); }
+.htab tr.tot td:first-child { font-size: 12px; }
 
 .filebtn { cursor: pointer; }
 .banner { margin: 12px 16px 0; padding: 12px; border-radius: 10px; background: #E8F3EC; border: 2.5px solid var(--accent); font-weight: 800; }
@@ -170,3 +175,15 @@ th { font-size: 13px; text-transform: uppercase; }
 .compass .chip { border-radius: 12px; font-size: 15px; padding: 6px 4px; }
 .compass .mid { display: flex; align-items: center; justify-content: center; font-size: 14px; font-weight: 800; text-align: center; }
 .numin { width: 100%; height: 64px; font-size: 34px; font-weight: 900; border: 3px solid var(--ink); border-radius: 12px; padding: 0 12px; }
+
+/* narrow screens / large phone text: keep the score box inside the screen */
+@media (max-width: 340px) {
+  .pad { padding: 12px; }
+  .scorebox .circ { width: 44px; height: 44px; font-size: 22px; border-width: 2.5px; }
+  .scorebox .cstep { gap: 4px; }
+  .scorebox .bigv { font-size: 44px; min-width: 30px; }
+  .scorebox .k { font-size: 12px; }
+  .grid9 { grid-template-columns: repeat(3, 60px); gap: 10px 14px; }
+  .circ.big { width: 60px; height: 60px; font-size: 26px; }
+  .keypad { grid-template-columns: repeat(3, 72px); }
+}
