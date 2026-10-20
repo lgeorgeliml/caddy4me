@@ -43,6 +43,15 @@
     { id: 'UW', name: 'U Wedge',  type: 'wedge',  carry: 78,  total: 82, partials: { '3/4': 66, '1/2': 51 } }
   ];
 
+  /* Melville Glades (Offcourse scorecard) - editable in Settings */
+  var COURSE = {
+    name: 'Melville Glades',
+    pars: [4, 5, 4, 4, 3, 4, 4, 5, 3, 4, 4, 4, 5, 3, 4, 4, 3, 5],
+    si:   [13, 14, 3, 7, 16, 5, 8, 11, 9, 2, 12, 1, 15, 17, 4, 6, 18, 10],
+    slope: 124, scratch: 72
+  };
+  var APPROACH9 = ['longLeft', 'long', 'longRight', 'left', 'hit', 'right', 'shortLeft', 'short', 'shortRight'];
+
   function clone(o) { return JSON.parse(JSON.stringify(o)); }
   function r0(x) { return Math.round(x); }
   function clamp(x, a, b) { return Math.max(a, Math.min(b, x)); }
@@ -195,6 +204,23 @@
     res.down = dn ? { name: dn.club.name, swing: dn.swing, E: r0(dn.E) } : null;
   }
 
+  /* ---------- Stableford (Golf Australia) ---------- */
+  function dailyHandicap(ga, slope, scratch, par) {
+    if (ga == null || isNaN(ga)) return null;
+    return Math.round((ga * slope / 113 + (scratch - par)) * 0.93);
+  }
+  function strokesOnHole(dh, si) {
+    if (dh == null || !si) return 0;
+    if (dh >= 0) return Math.floor(dh / 18) + (si <= dh % 18 ? 1 : 0);
+    var plus = -dh; // plus handicap gives strokes back from SI 18 upwards
+    return -(Math.floor(plus / 18) + (si > 18 - plus % 18 ? 1 : 0));
+  }
+  function stablefordPoints(par, score, strokes) {
+    if (score == null || !par) return null;
+    return Math.max(0, par + (strokes || 0) - score + 2);
+  }
+  function normApproach(a) { return a === 'green' ? 'hit' : a; }
+
   /* ---------- stats ---------- */
   function holeStats(h) {
     if (h == null || h.score == null) return null;
@@ -202,13 +228,17 @@
     var gir = (h.score - putts) <= (h.par - 2);
     var udAttempt = !gir;
     var sandAttempt = (h.sand || 0) >= 1 && !gir;
+    var sandSaveFlag = h.sandSave != null ? h.sandSave : h.upDown; // v0.1 rounds had no sandSave
     return {
       gir: gir,
       upDownAttempt: udAttempt,
       upDownMade: udAttempt && h.upDown === true,
       sandSaveAttempt: sandAttempt,
-      sandSaved: sandAttempt && h.upDown === true,
-      threePutts: Math.max(0, putts - 2)
+      sandSaved: sandAttempt && sandSaveFlag === true,
+      threePutts: Math.max(0, putts - 2),
+      fairwayAttempt: h.par >= 4 && h.fairway != null,
+      fairwayHit: h.par >= 4 && h.fairway === 'hit',
+      points: h.points != null ? h.points : null
     };
   }
   function suggestUpDown(h) { return (h.putts || 0) <= 1 && h.score <= h.par; }
@@ -217,7 +247,8 @@
   function roundSummary(holes) {
     var s = { holes: 0, score: 0, par: 0, putts: 0, gir: 0, girPutts: 0, ud: 0, udMade: 0,
               sandAtt: 0, sandSaved: 0, wasted: 0, penalties: 0, sandShots: 0,
-              miss: { green: 0, left: 0, right: 0, short: 0, long: 0 } };
+              fw: 0, fwHit: 0, chipIns: 0, points: 0, pointsHoles: 0, miss: {} };
+    APPROACH9.forEach(function (k) { s.miss[k] = 0; });
     (holes || []).forEach(function (h) {
       var st = holeStats(h); if (!st) return;
       s.holes++; s.score += h.score; s.par += h.par; s.putts += h.putts || 0;
@@ -225,19 +256,25 @@
       if (st.upDownAttempt) { s.ud++; if (st.upDownMade) s.udMade++; }
       if (st.sandSaveAttempt) { s.sandAtt++; if (st.sandSaved) s.sandSaved++; }
       s.wasted += h.wasted || 0; s.penalties += h.penalties || 0; s.sandShots += h.sand || 0;
-      if (h.approach && s.miss.hasOwnProperty(h.approach)) s.miss[h.approach]++;
+      var a = normApproach(h.approach);
+      if (a && s.miss.hasOwnProperty(a)) s.miss[a]++;
+      if (st.fairwayAttempt) { s.fw++; if (st.fairwayHit) s.fwHit++; }
+      if (h.chipIn) s.chipIns++;
+      if (st.points != null) { s.points += st.points; s.pointsHoles++; }
     });
     function pct(a, b) { return b ? Math.round(100 * a / b) : null; }
     s.toPar = s.score - s.par;
     s.girPct = pct(s.gir, s.holes);
     s.udPct = pct(s.udMade, s.ud);
     s.sandPct = pct(s.sandSaved, s.sandAtt);
+    s.fwPct = pct(s.fwHit, s.fw);
     s.puttsPerGir = s.gir ? Math.round(10 * s.girPutts / s.gir) / 10 : null;
     return s;
   }
 
   var api = {
-    K: K, LIES: LIES, DEFAULT_BAG: DEFAULT_BAG, clone: clone,
+    K: K, LIES: LIES, DEFAULT_BAG: DEFAULT_BAG, COURSE: COURSE, APPROACH9: APPROACH9, clone: clone,
+    dailyHandicap: dailyHandicap, strokesOnHole: strokesOnHole, stablefordPoints: stablefordPoints, normApproach: normApproach,
     distanceM: distanceM, bearingDeg: bearingDeg,
     windFromLive: windFromLive, windFromRelative: windFromRelative, windLabel: windLabel,
     recommend: recommend, swingWord: swingWord,

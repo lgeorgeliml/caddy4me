@@ -7,13 +7,14 @@
   var NEW_SHOT_M = 30;
   var LIE_KEYS = ['fairway', 'lightRough', 'heavyRough', 'bunker', 'hardpan'];
   var GROUNDS = [['soft', 'Soft'], ['normal', 'Normal'], ['firm', 'Firm']];
-  var APPROACH = [['green', 'On green'], ['left', 'Left'], ['right', 'Right'], ['short', 'Short'], ['long', 'Long']];
   var WIND_DIRS = [[315, 'Into from L'], [0, 'Into'], [45, 'Into from R'], [270, 'From left'], [null, ''], [90, 'From right'], [225, 'Help from L'], [180, 'Helping'], [135, 'Help from R']];
   var WIND_SPEEDS = [[0, 'Calm'], [10, 'Light'], [20, 'Moderate'], [30, 'Strong'], [40, 'Very strong']];
 
   var app = document.getElementById('app');
   var modal = document.getElementById('modal');
   var S = load();
+  if (!S.course.si) S = migrate(S);
+  save(); // persist any upgrade from older saved data
   var ui = freshHoleUi({ screen: 'home', holeIdx: 0, me: null, acc: null, gpsErr: '', card: null, summaryId: null, confirmReset: false });
   var map = null, watchId = null, wakeLock = null, windTimer = null, windBusy = false, windErr = false;
 
@@ -28,9 +29,19 @@
   function load() {
     try {
       var s = JSON.parse(localStorage.getItem(KEY));
-      if (s && s.version === 1) { var d = defaults(); Object.keys(d).forEach(function (k) { if (s[k] === undefined) s[k] = d[k]; }); return s; }
+      if (s && s.version === 1) { var d = defaults(); Object.keys(d).forEach(function (k) { if (s[k] === undefined) s[k] = d[k]; }); return migrate(s); }
     } catch (e) { /* fall through */ }
     return defaults();
+  }
+  function migrate(s) {
+    var C = E.COURSE;
+    s.course.pars = (s.course.pars || []).map(function (p, i) { return p || C.pars[i]; });
+    while (s.course.pars.length < 18) s.course.pars.push(C.pars[s.course.pars.length]);
+    if (!s.course.si) s.course.si = C.si.slice();
+    if (s.course.slope == null) s.course.slope = C.slope;
+    if (s.course.scratch == null) s.course.scratch = C.scratch;
+    if (s.settings.ga === undefined) s.settings.ga = 16.9;
+    return s;
   }
   function save() { try { localStorage.setItem(KEY, JSON.stringify(S)); } catch (e) { /* storage full or blocked */ } }
 
@@ -62,6 +73,7 @@
     else if (s === 'past') app.innerHTML = pastHtml();
     else if (s === 'bag') app.innerHTML = bagHtml();
     else if (s === 'prep') app.innerHTML = prepHtml();
+    else if (s === 'settings') app.innerHTML = settingsHtml();
   }
 
   /* ---------- home ---------- */
@@ -76,14 +88,15 @@
       '<button class="btn" data-a="prep">Before your round \u2013 videos &amp; swing thoughts</button>' +
       '<button class="btn" data-a="bag">My Bag</button>' +
       '<button class="btn" data-a="past">Past rounds</button>' +
+      '<button class="btn" data-a="settings">Settings \u2013 handicap &amp; course</button>' +
       '<button class="btn small" data-a="export">Export backup</button>' +
       '<p class="muted">For social and practice rounds. Club advice from a device isn’t allowed in competition (Rule 4.3).</p></div>';
   }
   function firstOpenHole(r) { for (var i = 0; i < 18; i++) if (r.holes[i].score == null) return i; return 17; }
   function newRound() {
     var holes = [];
-    for (var i = 0; i < 18; i++) holes.push({ n: i + 1, par: S.course.pars[i] || null, score: null, putts: null, approach: null, upDown: null, sand: 0, penalties: 0, wasted: 0 });
-    var r = { id: new Date().toISOString(), date: today(), ground: 'normal', holes: holes, done: false };
+    for (var i = 0; i < 18; i++) holes.push({ n: i + 1, par: S.course.pars[i], si: S.course.si[i], score: null, putts: null, approach: null, upDown: null, sand: 0, penalties: 0, wasted: 0 });
+    var r = { id: new Date().toISOString(), date: today(), ground: 'normal', holes: holes, done: false, dailyHcp: currentDH() };
     S.rounds.push(r); S.currentRoundId = r.id; save();
     ui.holeIdx = 0; freshHoleUi(ui); go('hole');
   }
@@ -201,8 +214,7 @@
   function updateHole() {
     if (ui.screen !== 'hole' || !$('htitle')) return;
     var r = cur(), h = r.holes[ui.holeIdx];
-    var par = h.par || S.course.pars[ui.holeIdx];
-    $('htitle').textContent = 'Hole ' + (ui.holeIdx + 1) + ' · Par ' + (par || '?');
+    $('htitle').textContent = 'Hole ' + (ui.holeIdx + 1) + ' \u00b7 Par ' + holePar(r, ui.holeIdx) + ' \u00b7 SI ' + holeSI(r, ui.holeIdx);
     var g = shotGeometry(), sw = shotWind(g.bearing);
     $('windchip').innerHTML = windArrow(sw.rel, sw.speed) + '<span>' + esc(sw.label) + '</span>';
 
@@ -274,89 +286,172 @@
     setTimeout(function () { var i = $('mdist'); if (i) i.focus(); }, 50);
   }
 
-  /* ---------- hole card ---------- */
+  /* ---------- course + handicap ---------- */
+  function coursePar() { return S.course.pars.reduce(function (a, p, i) { return a + (p || E.COURSE.pars[i]); }, 0); }
+  function currentDH() { return E.dailyHandicap(S.settings.ga, S.course.slope, S.course.scratch, coursePar()); }
+  function roundDH(r) { return r.dailyHcp != null ? r.dailyHcp : currentDH(); }
+  function holeSI(r, i) { return (r.holes[i].si) || S.course.si[i] || E.COURSE.si[i]; }
+  function holePar(r, i) { return r.holes[i].par || S.course.pars[i] || E.COURSE.pars[i]; }
+  function holePoints(r, i, h) {
+    h = h || r.holes[i];
+    return E.stablefordPoints(h.par || holePar(r, i), h.score, E.strokesOnHole(roundDH(r), holeSI(r, i)));
+  }
+  function holesWithPoints(r) {
+    return r.holes.map(function (h, i) { var c = Object.assign({}, h); if (c.score != null) { c.par = c.par || holePar(r, i); c.points = holePoints(r, i, c); } return c; });
+  }
+
+  /* ---------- hole card (v0.2, MiScore-style layout) ---------- */
+  var GRID = [['longLeft', '↖'], ['long', '↑'], ['longRight', '↗'], ['left', '←'], ['hit', '✓'], ['right', '→'], ['shortLeft', '↙'], ['short', '↓'], ['shortRight', '↘']];
+  var GRID_LABEL = { longLeft: 'Long left', long: 'Long', longRight: 'Long right', left: 'Left', hit: 'Hit', right: 'Right', shortLeft: 'Short left', short: 'Short', shortRight: 'Short right' };
+
   function openCard(idx) {
-    var r = cur(), h = r.holes[idx];
-    var par = h.par || S.course.pars[idx] || 4;
+    var r = cur(), h = r.holes[idx], par = holePar(r, idx), saved = h.score != null;
     ui.holeIdx = idx;
-    ui.card = { par: par, score: h.score != null ? h.score : par, putts: h.putts != null ? h.putts : 2,
-      approach: h.approach, upDown: h.upDown, sand: h.sand || 0, penalties: h.penalties || 0,
-      wasted: h.score != null ? (h.wasted || 0) : E.defaultWasted(2),
-      touched: { approach: h.score != null, upDown: h.score != null, wasted: h.score != null } };
+    ui.card = { par: par, si: holeSI(r, idx), score: saved ? h.score : par, putts: saved ? h.putts : 2,
+      chipIn: !!h.chipIn, fairway: h.fairway || null, approach: E.normApproach(h.approach) || null,
+      upDown: h.upDown, sandSave: h.sandSave != null ? h.sandSave : null,
+      sand: h.sand || 0, penalties: h.penalties || 0, wasted: saved ? (h.wasted || 0) : 0,
+      touched: { approach: saved, upDown: saved, sandSave: saved, wasted: saved } };
     autoCard();
     go('card');
   }
   function autoCard() {
     var c = ui.card;
     c.putts = Math.max(0, Math.min(c.putts, c.score));
+    if (c.putts > 0) c.chipIn = false;
     var st = E.holeStats(c);
-    if (!c.touched.approach) c.approach = st.gir ? 'green' : null;
-    if (st.gir && c.approach !== 'green' && !c.touched.approach) c.approach = 'green';
-    if (!st.gir && c.approach === 'green' && !c.touched.approach) c.approach = null;
-    if (!c.touched.upDown) c.upDown = st.gir ? null : E.suggestUpDown(c);
-    if (!c.touched.wasted) c.wasted = E.defaultWasted(c.putts);
     c.gir = st.gir;
+    if (!c.touched.approach) c.approach = st.gir ? 'hit' : (c.approach === 'hit' ? null : c.approach);
+    if (!c.touched.upDown) c.upDown = st.gir ? null : E.suggestUpDown(c);
+    if (st.gir) c.upDown = null;
+    var sandOk = !st.gir && c.sand >= 1;
+    if (!sandOk) c.sandSave = null;
+    else if (!c.touched.sandSave) c.sandSave = c.upDown === true;
+    if (!c.touched.wasted) c.wasted = E.defaultWasted(c.putts);
+    var r = cur();
+    c.strokes = E.strokesOnHole(roundDH(r), c.si);
+    c.points = E.stablefordPoints(c.par, c.score, c.strokes);
   }
-  function stepper(field, label, hint) {
-    return '<div class="field"><div class="name">' + label + (hint ? '<span class="hint">' + hint + '</span>' : '') + '</div>' +
-      '<div class="step"><button data-a="step" data-v="' + field + ':-1" aria-label="' + label + ' minus">−</button>' +
-      '<span class="val">' + ui.card[field] + '</span>' +
-      '<button data-a="step" data-v="' + field + ':1" aria-label="' + label + ' plus">+</button></div></div>';
+  function cardTotals() {
+    var r = cur(), c = ui.card;
+    var hs = holesWithPoints(r).map(function (h, i) {
+      if (i !== ui.holeIdx) return h;
+      return { par: c.par, score: c.score, putts: c.putts, fairway: c.par >= 4 ? c.fairway : null, approach: c.approach,
+        upDown: c.upDown, sandSave: c.sandSave, sand: c.sand, penalties: c.penalties, wasted: c.wasted, chipIn: c.chipIn, points: c.points };
+    });
+    return E.roundSummary(hs);
+  }
+  function cstep(field, label, totalTxt, hint, extra) {
+    var v = ui.card[field];
+    return '<div class="sec"><h3>' + label + '</h3>' + (hint ? '<div class="hint">' + hint + '</div>' : '') +
+      '<div class="cstep"><button class="circ" data-a="step" data-v="' + field + ':-1" aria-label="' + label + ' minus"' + (v <= 0 ? ' disabled' : '') + '>−</button>' +
+      '<span class="cval">' + v + '</span>' +
+      '<button class="circ" data-a="step" data-v="' + field + ':1" aria-label="' + label + ' plus">+</button></div>' +
+      (totalTxt != null ? '<div class="pills"><span class="pill">' + totalTxt + '</span></div>' : '') + (extra || '') + '</div>';
+  }
+  function toggle(action, label, on, enabled) {
+    return '<button class="tgl' + (on ? ' on' : '') + '" data-a="' + action + '"' + (enabled ? '' : ' disabled') + '><span class="dot"></span>' + label + '</button>';
   }
   function cardHtml() {
-    var c = ui.card, n = ui.holeIdx + 1;
-    var app_ = APPROACH.map(function (a) { return '<button class="chip' + (c.approach === a[0] ? ' on' : '') + '" data-a="appr" data-v="' + a[0] + '">' + a[1] + '</button>'; }).join('');
-    var ud = c.gir ? '' : '<div class="field"><div class="name">Up &amp; down</div><div class="chips">' +
-      '<button class="chip' + (c.upDown === true ? ' on' : '') + '" data-a="ud" data-v="1">Yes</button>' +
-      '<button class="chip' + (c.upDown === false ? ' on' : '') + '" data-a="ud" data-v="0">No</button></div></div>';
-    var toPar = c.score - c.par;
+    var c = ui.card, n = ui.holeIdx + 1, T = cardTotals(), toPar = c.score - c.par;
+    var strokesTxt = c.strokes === 1 ? '1 stroke' : c.strokes + ' strokes';
+    var fw = c.par >= 4 ? '<div class="sec"><h3>Fairway hit</h3><div class="cstep">' +
+      [['left', '←'], ['hit', '✓'], ['right', '→']].map(function (f) {
+        return '<button class="circ big' + (c.fairway === f[0] ? ' on' : '') + '" data-a="fw" data-v="' + f[0] + '" aria-label="Fairway ' + f[0] + '">' + f[1] + '</button>';
+      }).join('') + '</div><div class="pills"><span class="pill">Total: <b>' + T.fwHit + ' / ' + T.fw + '</b></span></div></div>' : '';
+    var grid = GRID.map(function (g) {
+      return '<button class="circ big' + (c.approach === g[0] ? ' on' : '') + '" data-a="appr" data-v="' + g[0] + '" aria-label="Approach ' + GRID_LABEL[g[0]] + '">' + g[1] + '</button>';
+    }).join('');
     return '<div class="bar"><div class="nav"><button class="arrow" data-a="backHole" aria-label="Back to hole">‹</button>' +
-      '<div class="title">Hole ' + n + ' card</div><span style="width:56px"></span></div></div>' +
-      '<div class="pad">' +
-      stepper('par', 'Par') + stepper('score', 'Score', signed(toPar) + ' to par') + stepper('putts', 'Putts') +
-      '<div class="field"><div class="name">Green in regulation</div><div class="calc' + (c.gir ? ' yes' : '') + '">' + (c.gir ? 'Yes' : 'No') + '</div></div>' +
-      '<div class="label">Approach result</div><div class="chips">' + app_ + '</div>' + ud +
-      stepper('sand', 'Sand shots') + stepper('penalties', 'Penalty shots') +
-      stepper('wasted', 'Wasted shots', 'Duffs, shanks, whiffs, 3-putts, chips not on') +
-      '<button class="btn primary" data-a="saveCard">' + (n < 18 ? 'Save – go to hole ' + (n + 1) : 'Save – finish round') + '</button>' +
-      '<button class="btn small" data-a="backHole">Back to hole ' + n + '</button></div>';
+      '<div class="title">Hole ' + n + '<span class="tsub">Par ' + c.par + ' · SI ' + c.si + ' · ' + strokesTxt + '</span></div><span style="width:56px"></span></div></div>' +
+      '<div class="pad cardpad">' +
+      '<div class="scorebox"><div class="sb"><div class="k">Score</div><div class="cstep"><button class="circ" data-a="step" data-v="score:-1" aria-label="Score minus">−</button>' +
+      '<span class="bigv">' + c.score + '</span><button class="circ" data-a="step" data-v="score:1" aria-label="Score plus">+</button></div><div class="sub2">' + signed(toPar) + ' to par</div></div>' +
+      '<div class="sb pts"><div class="k">Stableford</div><div class="bigv">' + c.points + '</div><div class="sub2">points · round ' + T.points + '</div></div></div>' +
+      cstep('putts', 'Putts', null, null, '<div class="pills">' + toggle('chip', 'Chip In', c.chipIn, true) + '<span class="pill">Total putts: <b>' + T.putts + '</b></span></div>') +
+      fw +
+      '<div class="sec"><h3>Green in regulation</h3><div class="pills">' + toggle('noop', c.gir ? 'Yes' : 'No', c.gir, false) +
+      '<span class="pill">Total: <b>' + T.gir + ' / ' + T.holes + '</b></span></div><div class="hint">Worked out from score and putts</div></div>' +
+      '<div class="sec"><h3>Approach shot</h3><div class="grid9">' + grid + '</div>' +
+      '<div class="pills">' + toggle('ud', 'Up &amp; Down', c.upDown === true, !c.gir) + toggle('ss', 'Sand Save', c.sandSave === true, !c.gir && c.sand >= 1) + '</div>' +
+      '<div class="pills"><span class="pill">U&amp;D <b>' + T.udMade + ' / ' + T.ud + '</b></span><span class="pill">Sand saves <b>' + T.sandSaved + ' / ' + T.sandAtt + '</b></span></div></div>' +
+      cstep('sand', 'Sand shots', 'Total: <b>' + T.sandShots + '</b>') +
+      cstep('wasted', 'Wasted shots', 'Total: <b>' + T.wasted + '</b>', 'Duffs, shanks, whiffs, 3-putts, chips not on') +
+      cstep('penalties', 'Penalty shots', 'Total: <b>' + T.penalties + '</b>') +
+      '</div><div class="footbar"><button class="btn" data-a="backHole">Cancel</button><button class="btn primary" data-a="saveCard">' + (n < 18 ? 'Save → ' + (n + 1) : 'Finish') + '</button></div>';
   }
   function saveCard() {
     var r = cur(), c = ui.card, h = r.holes[ui.holeIdx];
-    h.par = c.par; h.score = c.score; h.putts = c.putts; h.approach = c.approach;
-    h.upDown = c.gir ? null : c.upDown; h.sand = c.sand; h.penalties = c.penalties; h.wasted = c.wasted;
-    S.course.pars[ui.holeIdx] = c.par;
-    if (ui.holeIdx >= 17 || r.holes.every(function (x) { return x.score != null; })) {
-      r.done = r.holes.every(function (x) { return x.score != null; });
-    }
+    if (r.dailyHcp == null) r.dailyHcp = currentDH();
+    h.par = c.par; h.si = c.si; h.score = c.score; h.putts = c.putts; h.chipIn = c.chipIn;
+    h.fairway = c.par >= 4 ? c.fairway : null; h.approach = c.approach;
+    h.upDown = c.gir ? null : c.upDown; h.sandSave = c.sandSave; h.sand = c.sand; h.penalties = c.penalties; h.wasted = c.wasted;
+    h.points = c.points;
+    r.done = r.holes.every(function (x) { return x.score != null; });
     save();
     if (ui.holeIdx < 17) { ui.holeIdx++; freshHoleUi(ui); go('hole'); }
     else { ui.summaryId = r.id; go('summary'); }
   }
 
+  /* ---------- settings ---------- */
+  function settingsHtml() {
+    var dh = currentDH();
+    var siVals = S.course.si.slice().sort(function (a, b) { return a - b; }).join(',');
+    var siOk = siVals === Array.from({ length: 18 }, function (_, i) { return i + 1; }).join(',');
+    var rows = S.course.pars.map(function (p, i) {
+      return '<tr><td><b>' + (i + 1) + '</b></td><td><input class="smallin" type="number" inputmode="numeric" data-set="par:' + i + '" value="' + p + '"></td>' +
+        '<td><input class="smallin" type="number" inputmode="numeric" data-set="si:' + i + '" value="' + S.course.si[i] + '"></td></tr>';
+    }).join('');
+    return '<div class="bar"><div class="nav"><button class="arrow" data-a="home" aria-label="Home">⌂</button><div class="title">Settings</div><span style="width:56px"></span></div></div>' +
+      '<div class="pad"><h2>Handicap</h2>' +
+      '<div class="bagrow"><div class="nums">' +
+      '<label>GA handicap<input type="number" inputmode="decimal" step="0.1" data-set="ga" value="' + (S.settings.ga != null ? S.settings.ga : '') + '"></label>' +
+      '<label>Slope<input type="number" inputmode="numeric" data-set="slope" value="' + S.course.slope + '"></label>' +
+      '<label>Scratch rating<input type="number" inputmode="decimal" step="0.1" data-set="scratch" value="' + S.course.scratch + '"></label></div></div>' +
+      '<div class="tile dh"><div class="k">Daily handicap</div><div class="v" id="dhv">' + (dh != null ? dh : '–') + '</div>' +
+      '<div class="muted">(GA × slope ÷ 113 + (scratch − par ' + coursePar() + ')) × 0.93. Fixed for a round when it starts.</div></div>' +
+      '<h2>Melville Glades holes</h2>' + (siOk ? '' : '<p class="warn">Stroke indexes must be 1–18, each used once.</p>') +
+      '<table class="settab"><thead><tr><th>Hole</th><th>Par</th><th>Stroke index</th></tr></thead><tbody>' + rows + '</tbody></table>' +
+      '<p class="muted">Pre-loaded from the Offcourse scorecard – check against your club card.</p></div>';
+  }
+  app.addEventListener('change', function (e) {
+    var t = e.target; if (!t.dataset || !t.dataset.set) return;
+    var p = t.dataset.set.split(':'), v = Number(t.value);
+    if (p[0] === 'ga') { if (t.value === '' || isNaN(v) || v < -10 || v > 54) return; S.settings.ga = Math.round(v * 10) / 10; }
+    else if (p[0] === 'slope') { if (!(v >= 55 && v <= 155)) return; S.course.slope = Math.round(v); }
+    else if (p[0] === 'scratch') { if (!(v >= 55 && v <= 85)) return; S.course.scratch = Math.round(v * 10) / 10; }
+    else if (p[0] === 'par') { if (!(v >= 3 && v <= 6)) return; S.course.pars[+p[1]] = Math.round(v); }
+    else if (p[0] === 'si') { if (!(v >= 1 && v <= 18)) return; S.course.si[+p[1]] = Math.round(v); }
+    save(); render();
+  });
+
   /* ---------- summary & past ---------- */
   function summaryHtml() {
     var r = roundById(ui.summaryId); if (!r) return homeHtml();
-    var s = E.roundSummary(r.holes);
+    var hs = holesWithPoints(r), s = E.roundSummary(hs);
     function tile(k, v, sub) { return '<div class="tile"><div class="k">' + k + '</div><div class="v">' + v + '</div>' + (sub ? '<div class="muted">' + sub + '</div>' : '') + '</div>'; }
     function pc(v) { return v == null ? '–' : v + '%'; }
-    var rows = r.holes.map(function (h, i) {
-      if (h.score == null) return '<tr><td>' + h.n + '</td><td>' + (h.par || '') + '</td><td colspan="7">–</td></tr>';
+    var fwMark = { hit: '✓', left: '←', right: '→' };
+    var rows = hs.map(function (h, i) {
+      if (h.score == null) return '<tr><td>' + h.n + '</td><td>' + holePar(r, i) + '</td><td colspan="8">–</td></tr>';
       var st = E.holeStats(h);
-      return '<tr data-a="editHole" data-v="' + i + '"><td>' + h.n + '</td><td>' + h.par + '</td><td><b>' + h.score + '</b></td><td>' + h.putts + '</td><td>' + (st.gir ? '✓' : '') + '</td>' +
-        '<td>' + (h.approach ? h.approach[0].toUpperCase() : '') + '</td><td>' + (st.upDownAttempt ? (h.upDown ? '✓' : '✗') : '') + '</td>' +
-        '<td>' + (h.penalties || '') + '</td><td>' + (h.wasted || '') + '</td></tr>';
+      return '<tr data-a="editHole" data-v="' + i + '"><td>' + h.n + '</td><td>' + h.par + '</td><td><b>' + h.score + '</b></td><td><b>' + h.points + '</b></td><td>' + h.putts + '</td>' +
+        '<td>' + (h.par >= 4 && h.fairway ? fwMark[h.fairway] : '') + '</td><td>' + (st.gir ? '✓' : '') + '</td>' +
+        '<td>' + (st.upDownAttempt ? (h.upDown ? '✓' : '✗') : '') + '</td><td>' + (h.penalties || '') + '</td><td>' + (h.wasted || '') + '</td></tr>';
     }).join('');
+    var grid = GRID.map(function (g) { return '<div class="gcell' + (g[0] === 'hit' ? ' hitc' : '') + '"><span>' + g[1] + '</span><b>' + s.miss[g[0]] + '</b></div>'; }).join('');
     return '<div class="bar"><div class="nav"><button class="arrow" data-a="home" aria-label="Home">⌂</button><div class="title">Round ' + esc(r.date) + '</div><span style="width:56px"></span></div></div>' +
       '<div class="pad"><div class="tiles">' +
+      tile('Stableford', s.pointsHoles ? s.points + ' pts' : '–', 'Daily handicap ' + roundDH(r)) +
       tile('Score', s.holes ? s.score + ' (' + signed(s.toPar) + ')' : '–', s.holes + ' holes') +
-      tile('Putts', s.putts, s.puttsPerGir != null ? s.puttsPerGir + ' per GIR' : '') +
+      tile('Fairways', pc(s.fwPct), s.fwHit + ' of ' + s.fw) +
       tile('GIR', pc(s.girPct), s.gir + ' of ' + s.holes) +
+      tile('Putts', s.putts, (s.puttsPerGir != null ? s.puttsPerGir + ' per GIR · ' : '') + s.chipIns + ' chip-ins') +
       tile('Up &amp; down', pc(s.udPct), s.udMade + ' of ' + s.ud) +
       tile('Sand saves', pc(s.sandPct), s.sandSaved + ' of ' + s.sandAtt + ' · ' + s.sandShots + ' sand shots') +
       tile('Wasted', s.wasted, s.penalties + ' penalty shots') +
-      '</div><h2>Approach misses</h2><p class="sub">Green ' + s.miss.green + ' · Left ' + s.miss.left + ' · Right ' + s.miss.right + ' · Short ' + s.miss.short + ' · Long ' + s.miss.long + '</p>' +
-      '<h2>Hole by hole</h2><table><thead><tr><th>#</th><th>Par</th><th>Sc</th><th>Pt</th><th>GIR</th><th>App</th><th>U&amp;D</th><th>Pen</th><th>Wst</th></tr></thead><tbody>' + rows + '</tbody></table>' +
+      '</div><h2>Approach shots</h2><div class="sumgrid">' + grid + '</div>' +
+      '<h2>Hole by hole</h2><table class="htab"><thead><tr><th>#</th><th>Par</th><th>Sc</th><th>Pts</th><th>Pt</th><th>FW</th><th>GIR</th><th>U&amp;D</th><th>Pen</th><th>Wst</th></tr></thead><tbody>' + rows + '</tbody></table>' +
       '<p class="muted">Tap a hole to edit it.</p>' +
       (!r.done && r.id === S.currentRoundId ? '<button class="btn primary" data-a="resume">Back to the round</button>' : '') +
       '<button class="btn small" data-a="export">Export backup</button><button class="btn small" data-a="home">Home</button>' +
@@ -464,13 +559,18 @@
     backHole: function () { go('hole'); },
     step: function (v) {
       var p = v.split(':'), f = p[0], d = +p[1], c = ui.card;
-      var lim = { par: [3, 6], score: [1, 15], putts: [0, 8], sand: [0, 9], penalties: [0, 9], wasted: [0, 15] }[f];
+      var lim = { score: [1, 15], putts: [0, 8], sand: [0, 9], penalties: [0, 9], wasted: [0, 15] }[f];
       c[f] = Math.max(lim[0], Math.min(lim[1], c[f] + d));
       if (f === 'wasted') c.touched.wasted = true;
-      autoCard(); render();
+      autoCard(); rerenderCard();
     },
-    appr: function (v) { ui.card.approach = ui.card.approach === v ? null : v; ui.card.touched.approach = true; render(); },
-    ud: function (v) { ui.card.upDown = v === '1'; ui.card.touched.upDown = true; render(); },
+    appr: function (v) { ui.card.approach = ui.card.approach === v ? null : v; ui.card.touched.approach = true; autoCard(); rerenderCard(); },
+    fw: function (v) { ui.card.fairway = ui.card.fairway === v ? null : v; rerenderCard(); },
+    chip: function () { var c = ui.card, on = !c.chipIn; if (on) c.putts = 0; autoCard(); c.chipIn = on; rerenderCard(); },
+    ud: function () { var c = ui.card; if (c.gir) return; c.upDown = !(c.upDown === true); c.touched.upDown = true; autoCard(); rerenderCard(); },
+    ss: function () { var c = ui.card; if (c.gir || c.sand < 1) return; c.sandSave = !(c.sandSave === true); c.touched.sandSave = true; rerenderCard(); },
+    noop: function () {},
+    settings: function () { go('settings'); },
     saveCard: saveCard,
     prep: function () { go('prep'); },
     addThought: function () {
@@ -498,6 +598,7 @@
       S.bag = E.clone(E.DEFAULT_BAG); save(); ui.confirmReset = false; render();
     }
   };
+  function rerenderCard() { var y = window.scrollY; render(); window.scrollTo(0, y); }
   function onClick(e) {
     var b = e.target.closest('[data-a]'); if (!b) return;
     var f = A[b.dataset.a]; if (f) f(b.dataset.v, b);
