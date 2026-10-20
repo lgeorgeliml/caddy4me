@@ -102,13 +102,13 @@
     this.svg.setAttribute('viewBox', '0 0 ' + sz.w + ' ' + sz.h);
     var me = this.me ? this.toScreen(this.me) : null, tg = this.target ? this.toScreen(this.target) : null;
     if (me && tg) h += '<line x1="' + me.x + '" y1="' + me.y + '" x2="' + tg.x + '" y2="' + tg.y + '" stroke="#000" stroke-width="6" stroke-linecap="round"/>' +
-      '<line x1="' + me.x + '" y1="' + me.y + '" x2="' + tg.x + '" y2="' + tg.y + '" stroke="#FFD400" stroke-width="3" stroke-linecap="round"/>';
+      '<line x1="' + me.x + '" y1="' + me.y + '" x2="' + tg.x + '" y2="' + tg.y + '" stroke="#A6F36A" stroke-width="3" stroke-linecap="round"/>';
     if (me) {
       var r = this.acc / this.metersPerPixel(this.me.lat);
       if (r > 8) h += '<circle cx="' + me.x + '" cy="' + me.y + '" r="' + r + '" fill="rgba(30,136,229,0.18)" stroke="#1E88E5" stroke-width="1.5"/>';
       h += '<circle cx="' + me.x + '" cy="' + me.y + '" r="9" fill="#1E88E5" stroke="#fff" stroke-width="3"/>';
     }
-    if (tg) h += '<g transform="translate(' + tg.x + ',' + tg.y + ')"><circle r="13" fill="#FFD400" stroke="#000" stroke-width="2.5"/><circle r="3.5" fill="#000"/></g>';
+    if (tg) h += '<g transform="translate(' + tg.x + ',' + tg.y + ')"><circle r="13" fill="#A6F36A" stroke="#0A0B0A" stroke-width="2.5"/><circle r="3.5" fill="#000"/></g>';
     this.svg.innerHTML = h;
   };
 

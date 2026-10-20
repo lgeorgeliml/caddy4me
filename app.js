@@ -62,6 +62,65 @@
   function minsAgo(t) { var m = Math.round((Date.now() - t) / 60000); return m <= 0 ? 'just now' : m + ' min ago'; }
   function signed(n) { return n === 0 ? 'E' : (n > 0 ? '+' + n : String(n)); }
 
+  /* ---------- V2 look: icons + photos ---------- */
+  var IMG = { amen: 'images/amen-corner.jpg', bunker: 'images/bunker.jpg', fairway: 'images/fairway.jpg', ball: 'images/golf-ball.jpg' };
+  var ICONS = {
+    home: '<path d="M3 11l9-7 9 7"/><path d="M5 10v10h14V10"/>',
+    left: '<path d="M15 6l-6 6 6 6"/>', right: '<path d="M9 6l6 6-6 6"/>',
+    arrow: '<path d="M5 12h14"/><path d="M13 6l6 6-6 6"/>',
+    play: '<path d="M7 5v14l11-7z"/>',
+    drop: '<path d="M12 3c3 4 5 6.5 5 9.5A5 5 0 0 1 7 12.5C7 9.5 9 7 12 3z"/>',
+    bag: '<path d="M7 21l3-17"/><path d="M14 21l-1-17"/><rect x="6" y="13" width="12" height="8" rx="2"/>',
+    chart: '<path d="M4 20V10"/><path d="M10 20V4"/><path d="M16 20v-7"/><path d="M22 20H2"/>',
+    gear: '<circle cx="12" cy="12" r="3"/><path d="M12 2v3M12 19v3M2 12h3M19 12h3M4.9 4.9l2.1 2.1M17 17l2.1 2.1M4.9 19.1L7 17M17 7l2.1-2.1"/>',
+    save: '<path d="M12 4v11"/><path d="M7 10l5 5 5-5"/><path d="M5 20h14"/>',
+    flag: '<path d="M7 21V3l10 4-10 4"/>',
+    fairway: '<path d="M4 20l4-16h8l4 16"/><path d="M12 6v3M12 12v3"/>',
+    check: '<path d="M5 12l5 5 9-10"/>',
+    wind: '<path d="M3 8h11a3 3 0 1 0-3-3"/><path d="M3 12h15a3 3 0 1 1-3 3"/><path d="M3 16h7"/>'
+  };
+  function ic(name, cls) { return '<svg class="ico' + (cls ? ' ' + cls : '') + '" viewBox="0 0 24 24" aria-hidden="true">' + ICONS[name] + '</svg>'; }
+  var DAYS = ['SUN', 'MON', 'TUE', 'WED', 'THU', 'FRI', 'SAT'], MONTHS = ['JAN', 'FEB', 'MAR', 'APR', 'MAY', 'JUN', 'JUL', 'AUG', 'SEP', 'OCT', 'NOV', 'DEC'];
+  function niceDate(iso) {
+    var d = iso ? new Date(iso + 'T12:00:00') : new Date();
+    return DAYS[d.getDay()] + ', ' + d.getDate() + ' ' + MONTHS[d.getMonth()];
+  }
+  function longDate(iso) {
+    var d = new Date(iso + 'T12:00:00');
+    var day = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'][d.getDay()];
+    return day + ' ' + d.getDate() + ' ' + MONTHS[d.getMonth()].charAt(0) + MONTHS[d.getMonth()].slice(1).toLowerCase();
+  }
+  function greeting() { var h = new Date().getHours(); return h < 12 ? 'Morning' : h < 17 ? 'Afternoon' : 'Evening'; }
+  function mood() { var h = new Date().getHours(); return h < 9 ? 'First light, dew on the greens' : h < 17 ? 'A good day for a walk' : 'Twilight round'; }
+  // running Stableford total as a glowing line (Summary)
+  function pointsChart(hs) {
+    var tot = 0, pts = [];
+    hs.forEach(function (h, i) { if (h.score != null) { tot += (h.points || 0); pts.push([i, tot]); } });
+    if (pts.length < 2) return '';
+    var W = 326, H = 132, top = Math.max(36, tot);
+    var xy = pts.map(function (p) { return [5 + p[0] * (316 / 17), 118 - (p[1] / top) * 108]; });
+    var d = 'M' + xy[0][0].toFixed(1) + ' ' + xy[0][1].toFixed(1);
+    for (var i = 1; i < xy.length; i++) {
+      var mx = ((xy[i - 1][0] + xy[i][0]) / 2).toFixed(1);
+      d += ' C' + mx + ' ' + xy[i - 1][1].toFixed(1) + ',' + mx + ' ' + xy[i][1].toFixed(1) + ',' + xy[i][0].toFixed(1) + ' ' + xy[i][1].toFixed(1);
+    }
+    var e = xy[xy.length - 1], y36 = (118 - (36 / top) * 108).toFixed(1);
+    return '<div class="card chartcard"><div class="top"><span>POINTS THROUGH THE ROUND</span><span>Target 36</span></div>' +
+      '<svg viewBox="0 0 ' + W + ' ' + H + '" role="img" aria-label="Running Stableford total, ' + tot + ' points after ' + pts.length + ' holes">' +
+      '<defs><filter id="glow" x="-20%" y="-50%" width="140%" height="200%"><feGaussianBlur stdDeviation="4"/></filter></defs>' +
+      '<line x1="0" y1="' + y36 + '" x2="' + W + '" y2="' + y36 + '" stroke="#3A3F3B" stroke-dasharray="3 5"/>' +
+      '<line x1="0" y1="118" x2="' + W + '" y2="118" stroke="#262A26"/>' +
+      '<path d="' + d + '" fill="none" stroke="#A6F36A" stroke-width="6" opacity=".55" filter="url(#glow)"/>' +
+      '<path d="' + d + '" fill="none" stroke="#A6F36A" stroke-width="2.5" stroke-linejoin="round" stroke-linecap="round"/>' +
+      '<circle cx="' + e[0].toFixed(1) + '" cy="' + e[1].toFixed(1) + '" r="5" fill="#A6F36A" stroke="#0A0B0A" stroke-width="2"/></svg>' +
+      '<div class="axis"><span>Hole 1</span><span>9</span><span>18</span></div></div>';
+  }
+  function ring(value, max) {
+    var C = 2 * Math.PI * 48, f = Math.max(0, Math.min(1, value / max));
+    return '<svg width="118" height="118" viewBox="0 0 118 118" aria-hidden="true"><circle cx="59" cy="59" r="48" fill="none" stroke="#262A26" stroke-width="11"/>' +
+      (f > 0 ? '<circle cx="59" cy="59" r="48" fill="none" stroke="#A6F36A" stroke-width="11" stroke-linecap="round" stroke-dasharray="' + (C * f).toFixed(1) + ' ' + C.toFixed(1) + '" transform="rotate(-90 59 59)"/>' : '') + '</svg>';
+  }
+
   /* ---------- navigation ---------- */
   function go(screen) {
     if (ui.screen === 'hole' && screen !== 'hole') stopHole();
@@ -86,17 +145,42 @@
   function homeHtml() {
     var r = cur(), open = r && !r.done;
     var nextHole = open ? firstOpenHole(r) + 1 : 1;
-    return '<div class="pad"><h1>Caddy4Me</h1><p class="sub">Your caddie at Melville Glades</p>' +
-      (open ? '<button class="btn primary" data-a="resume">Resume round – Hole ' + nextHole + '</button>' +
+    var dh = currentDH();
+    var weather = S.wind && Date.now() - S.wind.at < 3 * 3600000 ? '<span class="weather">' + ic('wind') + Math.round(S.wind.speed) + ' km/h ' + compass(S.wind.from) + '</span>' : '';
+    // most recent round with scores (not the one in progress)
+    var last = S.rounds.slice().reverse().filter(function (x) { return x !== (open ? r : null) && x.holes.some(function (h) { return h.score != null; }); })[0];
+    var lastCard = '';
+    if (last) {
+      var ls = E.roundSummary(holesWithPoints(last));
+      lastCard = '<button class="card lastround" data-a="openRound" data-v="' + esc(last.id) + '">' +
+        '<div class="top"><span>LAST ROUND</span><span>' + esc(niceDate(last.date)) + '</span></div>' +
+        '<div class="body"><div><div class="kv"><div class="k">Gross</div><div class="v">' + ls.score + ' <small>' + (ls.holes < 18 ? ls.holes + ' holes' : signed(ls.toPar)) + '</small></div></div>' +
+        '<div class="kv"><div class="k">Putts</div><div class="v">' + ls.putts + ' <small>total</small></div></div></div>' +
+        '<div class="ring">' + ring(ls.points, 36) + '<div class="c"><b>' + (ls.pointsHoles ? ls.points : '–') + '</b><span>PTS</span></div></div></div></button>' +
+        '<div class="duo"><div class="mini"><div class="h">' + ic('fairway') + '<span>FAIRWAYS</span></div><div class="v">' + ls.fwHit + '<small>/' + ls.fw + '</small></div></div>' +
+        '<div class="mini"><div class="h">' + ic('flag') + '<span>GREENS</span></div><div class="v">' + ls.gir + '<small>/' + ls.statHoles + '</small></div></div></div>';
+    }
+    var tp = S.prep.thoughts.length, vp = S.prep.videos.length;
+    function rowBtn(a, icon, title, sub) {
+      return '<button class="row-btn" data-a="' + a + '"><span class="badge">' + ic(icon) + '</span><span class="t"><b>' + title + '</b><span>' + sub + '</span></span>' + ic('right') + '</button>';
+    }
+    return '<div class="home">' +
+      '<div class="hello"><div><div class="date">' + niceDate() + '</div><div class="name">' + greeting() + ', George</div></div>' + weather + '</div>' +
+      '<div class="photo herocard"><img src="' + IMG.amen + '" alt="Stone bridge over the creek to a par-3 green lined with azaleas">' +
+      '<span class="over tag lime">MELVILLE GLADES</span>' +
+      '<div class="over cap"><div class="mood">' + mood() + '</div><div class="info">' + (open ? 'Round in progress · next up hole ' + nextHole : '18 holes · Daily handicap ' + (dh != null ? dh : '–')) + '</div></div></div>' +
+      lastCard +
+      rowBtn('prep', 'drop', 'Before your round', (tp ? tp + ' swing thought' + (tp > 1 ? 's' : '') : 'Add swing thoughts') + ' · ' + vp + ' video' + (vp === 1 ? '' : 's')) +
+      (open ? '<button class="btn primary" data-a="resume">Resume · Hole ' + nextHole + ic('play') + '</button>' +
               '<button class="btn" data-a="newRound">Start a new round</button>' +
-              '<button class="btn small danger" data-a="discard">' + (ui.confirmDiscard ? 'Tap again to discard \u2013 nothing is saved' : 'Discard this round') + '</button>'
-            : '<button class="btn primary" data-a="newRound">Start round – Melville Glades</button>') +
-      '<button class="btn" data-a="prep">Before your round \u2013 videos &amp; swing thoughts</button>' +
-      '<button class="btn" data-a="bag">My Bag</button>' +
-      '<button class="btn" data-a="past">Past rounds</button>' +
-      '<button class="btn" data-a="settings">Settings \u2013 handicap &amp; course</button>' +
-      '<button class="btn small" data-a="export">Export backup</button>' +
-      '<p class="muted">For social and practice rounds. Club advice from a device isn’t allowed in competition (Rule 4.3).</p></div>';
+              '<button class="btn small danger" data-a="discard">' + (ui.confirmDiscard ? 'Tap again to discard – nothing is saved' : 'Discard this round') + '</button>'
+            : '<button class="btn primary" data-a="newRound">Start round' + ic('play') + '</button>') +
+      '<div class="list">' +
+      rowBtn('past', 'chart', 'Past rounds', S.rounds.length + ' saved · import scores') +
+      rowBtn('bag', 'bag', 'My bag', S.bag.length + ' clubs · carry &amp; total') +
+      rowBtn('settings', 'gear', 'Settings', 'Handicap &amp; course') +
+      rowBtn('export', 'save', 'Export backup', 'Save a copy of your bag and rounds') + '</div>' +
+      '<p class="note">For social and practice rounds. Club advice from a device isn’t allowed in competition (Rule 4.3).</p></div>';
   }
   function firstOpenHole(r) { for (var i = 0; i < 18; i++) if (r.holes[i].score == null) return i; return 17; }
   function newRound() {
@@ -110,21 +194,24 @@
   /* ---------- hole screen ---------- */
   function renderHole() {
     var lies = LIE_KEYS.map(function (k) { return '<button class="chip" data-a="lie" data-v="' + k + '">' + E.LIES[k].label + '</button>'; }).join('');
-    var grounds = GROUNDS.map(function (g) { return '<button class="chip" data-a="ground" data-v="' + g[0] + '">' + g[1] + '</button>'; }).join('');
     app.innerHTML =
-      '<div class="bar"><div class="nav"><button class="arrow" data-a="home" aria-label="Home">⌂</button>' +
-      '<button class="arrow" data-a="prevHole" aria-label="Previous hole">‹</button><div class="title" id="htitle"></div>' +
-      '<button class="arrow" data-a="nextHole" aria-label="Next hole">›</button></div>' +
-      '<button class="windchip" data-a="wind" id="windchip"></button></div>' +
-      '<div class="mapwrap"><div id="map"></div><div class="maphint" id="maphint" hidden></div>' +
+      '<div class="hole">' +
+      '<div class="topbar"><button class="ibtn" data-a="home" aria-label="Home">' + ic('home') + '</button>' +
+      '<span class="tag line gpstag" id="gpstag"><span class="dotl"></span><span id="gpstxt">GPS</span></span>' +
+      '<div class="pair"><button class="ibtn" data-a="prevHole" aria-label="Previous hole">' + ic('left') + '</button>' +
+      '<button class="ibtn" data-a="nextHole" aria-label="Next hole">' + ic('right') + '</button></div></div>' +
+      '<button class="bigdist" data-a="manualDist" id="dist" aria-label="Distance – tap to type one"></button>' +
+      '<div class="trio"><button class="stat" data-a="wind" id="windchip" aria-label="Wind – tap to change"></button>' +
+      '<div class="stat" id="playslike"></div>' +
+      '<button class="stat" data-a="cycleGround" id="groundstat" aria-label="Ground – tap to change"></button></div>' +
+      '<div class="mapwrap"><div id="map"></div>' +
+      '<div class="mapseg"><div class="seg"><button data-a="mode" data-v="tee">Tee</button><button data-a="mode" data-v="approach">Approach</button></div></div>' +
+      '<div class="maphint" id="maphint" hidden></div>' +
       '<div class="mapbtns"><button data-a="zin" aria-label="Zoom in">+</button><button data-a="zout" aria-label="Zoom out">−</button>' +
       '<button data-a="recenter" aria-label="Centre on me">◎</button></div></div>' +
-      '<section class="shot"><div class="row spread"><button class="dist" data-a="manualDist" id="dist"></button>' +
-      '<div class="seg"><button data-a="mode" data-v="tee">Tee</button><button data-a="mode" data-v="approach">Approach</button></div></div>' +
-      '<div id="liebox"><div class="label">Lie</div><div class="chips">' + lies + '</div></div>' +
-      '<div class="label">Ground</div><div class="chips">' + grounds + '</div></section>' +
+      '<div id="liebox" class="shotopts"><div class="label">Lie</div><div class="chips">' + lies + '</div></div>' +
       '<section class="call" id="call"></section>' +
-      '<div class="pad"><button class="btn primary" data-a="holeDone">Hole done – enter stats</button></div>';
+      '<button class="btn primary" data-a="holeDone">Hole done · enter stats</button></div>';
     map = new window.SatMap($('map'), { zoom: 18, onTap: onMapTap });
     if (ui.me) { map.setView(ui.me, 18); map.setMe(ui.me, ui.acc); ui.centered = true; }
     if (ui.target) map.setTarget(ui.target);
@@ -214,15 +301,29 @@
     if (rel == null || speed < 3) return '';
     // arrow shows where the wind blows, relative to the shot (up = towards target)
     return '<svg class="arr" viewBox="0 0 26 26" aria-hidden="true"><g transform="rotate(' + (rel + 180) + ' 13 13)">' +
-      '<path d="M13 3 L20 13 H15.5 V23 H10.5 V13 H6 Z" fill="#000"/></g></svg>';
+      '<path d="M13 3 L20 13 H15.5 V23 H10.5 V13 H6 Z" fill="#A6F36A"/></g></svg>';
   }
+  function windTile(sw, bearing) {
+    var manual = S.settings.windSource === 'manual';
+    var v, s;
+    if (!manual && !S.wind) { v = '—'; s = windErr ? 'tap to set' : 'loading…'; }
+    else if (!manual && bearing == null) { v = Math.round(S.wind.speed); s = 'km/h from ' + compass(S.wind.from); }
+    else {
+      v = Math.round(manual ? sw.speed : S.wind.speed);
+      var lab = E.windLabel(sw.w), i = lab.indexOf(' · ');
+      s = (i >= 0 ? lab.slice(i + 3) : lab.toLowerCase()) + (manual ? ' · set' : '');
+    }
+    return '<span class="k">Wind</span><span class="v">' + windArrow(sw.rel, sw.speed) + v + '</span><span class="s">' + esc(s) + '</span>';
+  }
+  var GROUND_LABEL = { soft: ['Soft', 'wet / dewy'], normal: ['Normal', 'usual run'], firm: ['Firm', 'extra run'] };
 
   function updateHole() {
-    if (ui.screen !== 'hole' || !$('htitle')) return;
-    var r = cur(), h = r.holes[ui.holeIdx];
-    $('htitle').textContent = 'Hole ' + (ui.holeIdx + 1) + ' \u00b7 Par ' + holePar(r, ui.holeIdx) + ' \u00b7 SI ' + holeSI(r, ui.holeIdx);
+    if (ui.screen !== 'hole' || !$('dist')) return;
+    var r = cur();
     var g = shotGeometry(), sw = shotWind(g.bearing);
-    $('windchip').innerHTML = windArrow(sw.rel, sw.speed) + '<span>' + esc(sw.label) + '</span>';
+    $('windchip').innerHTML = windTile(sw, g.bearing);
+    var gl = GROUND_LABEL[r.ground] || GROUND_LABEL.normal;
+    $('groundstat').innerHTML = '<span class="k">Ground</span><span class="v">' + gl[0] + '</span><span class="s">' + gl[1] + '</span>';
 
     var hint = $('maphint'), msg = '', bad = false;
     if (ui.gpsErr) { msg = ui.gpsErr; bad = ui.gpsErr.indexOf('blocked') >= 0; }
@@ -230,26 +331,34 @@
     else if (ui.acc > 10) { msg = 'GPS weak ±' + Math.round(ui.acc) + ' m'; bad = true; }
     else if (!ui.target && !ui.manualDist) msg = ui.mode === 'tee' ? 'Tap your landing spot' : 'Tap the pin or your target';
     hint.hidden = !msg; hint.textContent = msg; hint.classList.toggle('gpsbad', bad);
+    $('gpstxt').textContent = ui.me ? 'GPS ±' + Math.round(ui.acc || 0) + ' M' : (ui.gpsErr && bad ? 'GPS BLOCKED' : 'GPS…');
+    $('gpstag').classList.toggle('bad', !ui.me || ui.acc > 10);
 
+    var head = '<span class="hn">Hole ' + (ui.holeIdx + 1) + ' <span>· PAR ' + holePar(r, ui.holeIdx) + ' · SI ' + holeSI(r, ui.holeIdx) + '</span></span>';
     var d = $('dist');
-    if (g.D) d.innerHTML = Math.round(g.D) + ' m<small>' + (g.src === 'entered' ? 'entered · tap to change' : 'to target · GPS ±' + Math.round(ui.acc || 0) + ' m') + '</small>';
-    else d.innerHTML = '— m<small>tap to type a distance</small>';
+    if (g.D) d.innerHTML = head + '<span class="num"><b>' + Math.round(g.D) + '</b><i>M</i></span><span class="src">' +
+      (g.src === 'entered' ? 'entered · tap to change' : (ui.mode === 'tee' ? 'to your landing spot' : 'to target') + ' · tap to type') + '</span>';
+    else d.innerHTML = head + '<span class="num"><b>—</b><i>M</i></span><span class="src">tap the map, or tap here to type</span>';
 
     Array.prototype.forEach.call(app.querySelectorAll('[data-a="mode"]'), function (b) { b.classList.toggle('on', b.dataset.v === ui.mode); });
     Array.prototype.forEach.call(app.querySelectorAll('[data-a="lie"]'), function (b) { b.classList.toggle('on', b.dataset.v === ui.lie); });
-    Array.prototype.forEach.call(app.querySelectorAll('[data-a="ground"]'), function (b) { b.classList.toggle('on', b.dataset.v === r.ground); });
     $('liebox').hidden = ui.mode === 'tee';
 
-    var call = $('call');
-    if (!g.D) { call.innerHTML = '<div class="empty">' + (ui.mode === 'tee' ? 'Tap where you want the tee shot to finish.' : 'Tap the pin or your target on the map.') + '</div>'; return; }
+    var call = $('call'), pl = $('playslike');
+    if (!g.D) {
+      pl.innerHTML = '<span class="k">Plays like</span><span class="v">—</span><span class="s">metres</span>';
+      call.innerHTML = '<div class="ctop"><span class="k">YOUR CALL</span></div><div class="empty">' + (ui.mode === 'tee' ? 'Tap where you want the tee shot to finish.' : 'Tap the pin or your target on the map.') + '</div>';
+      return;
+    }
     var rec = E.recommend({ distance: g.D, mode: ui.mode, wind: sw.w, lie: ui.lie, ground: r.ground, bag: S.bag });
+    pl.innerHTML = '<span class="k">Plays like</span><span class="v">' + rec.playsLike + '</span><span class="s">' + (rec.mode === 'tee' ? 'landing zone' : 'metres') + '</span>';
     var swing = rec.swing === 'full' ? 'full' : rec.swing === 'pitch' ? 'pitch' : rec.swing + ' swing';
     var lines = rec.reasons.concat(rec.notes);
     if (!sw.w && S.settings.windSource !== 'manual') lines.push('Wind not included');
     call.innerHTML =
+      '<div class="ctop"><span class="k">YOUR CALL</span></div>' +
       (rec.warning ? '<div class="warn">' + esc(rec.warning) + '</div>' : '') +
       '<div class="club">' + esc(rec.club.name) + '<span class="swing">' + esc(swing) + '</span></div>' +
-      '<div class="plays">Plays like ' + rec.playsLike + ' m' + (rec.mode === 'tee' ? ' (landing zone)' : '') + '</div>' +
       (rec.aim ? '<div class="aim">' + esc(rec.aim) + '</div>' : '') +
       (lines.length ? '<ul>' + lines.map(function (x) { return '<li>' + esc(x) + '</li>'; }).join('') + '</ul>' : '') +
       '<div class="alts">' +
@@ -371,12 +480,18 @@
     var grid = GRID.map(function (g) {
       return '<button class="circ big' + (c.approach === g[0] ? ' on' : '') + '" data-a="appr" data-v="' + g[0] + '" aria-label="Approach ' + GRID_LABEL[g[0]] + '">' + g[1] + '</button>';
     }).join('');
-    return '<div class="bar"><div class="nav"><button class="arrow" data-a="backHole" aria-label="Back to hole">‹</button>' +
-      '<div class="title">Hole ' + n + '<span class="tsub">Par ' + c.par + ' · SI ' + c.si + ' · ' + strokesTxt + '</span></div><span style="width:56px"></span></div></div>' +
+    var NAMES = { '-3': 'ALBATROSS', '-2': 'EAGLE', '-1': 'BIRDIE', '0': 'PAR', '1': 'BOGEY', '2': 'DOUBLE' };
+    var rname = NAMES[String(toPar)] || (toPar > 0 ? '+' + toPar : String(toPar));
+    var prog = cur().holes.map(function (h, i) { return '<span class="' + (i === ui.holeIdx ? 'now' : h.score != null ? 'done' : '') + '"></span>'; }).join('');
+    return '<div class="photo cardhead"><img src="' + IMG.fairway + '" alt="">' +
+      '<div class="over topbar"><button class="ibtn glass" data-a="backHole" aria-label="Back to hole">' + ic('left') + '</button>' +
+      '<span class="tsub" style="color:#fff">Hole ' + n + ' · Par ' + c.par + ' · SI ' + c.si + '</span><span style="width:48px"></span></div>' +
+      '<div class="over mid"><span class="tag white">' + ic('check') + rname + ' · ' + c.points + ' STABLEFORD PT' + (c.points === 1 ? '' : 'S') + '</span>' +
+      '<div class="score"><button class="circ" data-a="step" data-v="score:-1" aria-label="Score minus">−</button>' +
+      '<span class="bigv">' + c.score + '</span><button class="circ plus" data-a="step" data-v="score:1" aria-label="Score plus">+</button></div>' +
+      '<span class="line2">' + (c.strokes ? 'you get ' + strokesTxt + ' here' : 'no handicap stroke here') + ' · round ' + T.points + ' pts</span></div></div>' +
+      '<div class="progress" aria-label="Hole ' + n + ' of 18">' + prog + '</div>' +
       '<div class="pad cardpad">' +
-      '<div class="scorebox"><div class="sb"><div class="k">Score</div><div class="cstep"><button class="circ" data-a="step" data-v="score:-1" aria-label="Score minus">−</button>' +
-      '<span class="bigv">' + c.score + '</span><button class="circ" data-a="step" data-v="score:1" aria-label="Score plus">+</button></div><div class="sub2">' + signed(toPar) + ' to par</div></div>' +
-      '<div class="sb pts"><div class="k">Stableford</div><div class="bigv">' + c.points + '</div><div class="sub2">points<br>Round: ' + T.points + '</div></div></div>' +
       cstep('putts', 'Putts', null, null, '<div class="pills">' + toggle('chip', 'Chip In', c.chipIn, true) + '<span class="pill">Total putts: <b>' + T.putts + '</b></span></div>') +
       fw +
       '<div class="sec"><h3>Green in regulation</h3><div class="pills">' + toggle('gir', 'Green hit', c.gir, true) +
@@ -387,7 +502,7 @@
       cstep('sand', 'Sand shots', 'Total: <b>' + T.sandShots + '</b>') +
       cstep('wasted', 'Wasted shots', 'Total: <b>' + T.wasted + '</b>', 'Duffs, shanks, whiffs, 3-putts, chips not on') +
       cstep('penalties', 'Penalty shots', 'Total: <b>' + T.penalties + '</b>') +
-      '</div><div class="footbar"><button class="btn" data-a="backHole">Cancel</button><button class="btn primary" data-a="saveCard">' + (n < 18 ? 'Save → ' + (n + 1) : 'Finish') + '</button></div>';
+      '</div><div class="footbar"><button class="btn" data-a="backHole">Cancel</button><button class="btn primary" data-a="saveCard">' + (n < 18 ? 'Save · Hole ' + (n + 1) : 'Finish round') + '</button></div>';
   }
   function saveCard() {
     var r = cur(), c = ui.card, h = r.holes[ui.holeIdx];
@@ -458,18 +573,24 @@
     });
     var rows = rowList.slice(0, 9).join('') + totRow('OUT', 0, 9) + rowList.slice(9).join('') + totRow('IN', 9, 18) + totRow('TOT', 0, 18);
     var grid = GRID.map(function (g) { return '<div class="gcell' + (g[0] === 'hit' ? ' hitc' : '') + '"><span>' + g[1] + '</span><b>' + s.miss[g[0]] + '</b></div>'; }).join('');
-    return '<div class="bar"><div class="nav"><button class="arrow" data-a="home" aria-label="Home">⌂</button><div class="title">Round ' + esc(r.date) + '</div><span style="width:56px"></span></div></div>' +
+    return '<div class="photo sumhead"><img src="' + IMG.amen + '" alt="Stone bridge and par-3 green at the corner of the course" style="object-position:50% 40%">' +
+      '<div class="over topbar"><button class="ibtn glass" data-a="home" aria-label="Home">' + ic('left') + '</button>' +
+      '<span class="tag white">' + ic('flag') + (r.done ? 'ROUND COMPLETE' : s.holes + ' OF 18 HOLES') + '</span>' +
+      '<button class="ibtn glass" data-a="export" aria-label="Export backup">' + ic('save') + '</button></div>' +
+      '<div class="over big"><div class="n"><b>' + (s.pointsHoles ? s.points : '–') + '</b><i>PTS</i></div>' +
+      '<div class="when">' + esc(longDate(r.date)) + ' · Melville Glades</div></div></div>' +
       '<div class="pad"><div class="tiles">' +
-      tile('Stableford', s.pointsHoles ? s.points + ' pts' : '–', 'Daily handicap ' + roundDH(r)) +
-      tile('Score', s.holes ? s.score + ' (' + signed(s.toPar) + ')' : '–', s.holes + ' holes') +
-      tile('Fairways', pc(s.fwPct), s.fwHit + ' of ' + s.fw) +
-      tile('GIR', pc(s.girPct), s.gir + ' of ' + s.statHoles + (s.pickups ? ' \u00b7 ' + s.pickups + ' pick-ups' : '')) +
+      tile('Gross', s.holes ? s.score : '–', s.holes ? signed(s.toPar) + ' · daily hcp ' + roundDH(r) : 'daily hcp ' + roundDH(r)) +
       tile('Putts', s.putts, (s.puttsPerGir != null ? s.puttsPerGir + ' per GIR · ' : '') + s.chipIns + ' chip-ins') +
+      tile('Greens', s.gir + '<small class="muted">/' + s.statHoles + '</small>', pc(s.girPct) + (s.pickups ? ' · ' + s.pickups + ' pick-ups' : '')) +
+      tile('Fairways', s.fwHit + '<small class="muted">/' + s.fw + '</small>', pc(s.fwPct)) +
       tile('Up &amp; down', pc(s.udPct), s.udMade + ' of ' + s.ud) +
       tile('Sand saves', pc(s.sandPct), s.sandSaved + ' of ' + s.sandAtt + ' · ' + s.sandShots + ' sand shots') +
-      tile('Wasted', s.wasted, s.penalties + ' penalty shots') +
-      '</div><h2>Approach shots</h2><div class="sumgrid">' + grid + '</div>' +
-      '<h2>Hole by hole</h2><table class="htab"><thead><tr><th>#</th><th>Par</th><th>Sc</th><th>Pts</th><th>Pt</th><th>FW</th><th>GIR</th><th>U&amp;D</th><th>Pen</th><th>Wst</th></tr></thead><tbody>' + rows + '</tbody></table>' +
+      tile('Wasted', s.wasted, 'shots') +
+      tile('Penalties', s.penalties, 'shots') +
+      '</div>' + pointsChart(hs) +
+      '<h2>Approach shots</h2><div class="sumgrid">' + grid + '</div>' +
+      '<h2>Hole by hole</h2><div class="tablebox"><table class="htab"><thead><tr><th>#</th><th>Par</th><th>Sc</th><th>Pts</th><th>Pt</th><th>FW</th><th>GIR</th><th>U&amp;D</th><th>Pen</th><th>Wst</th></tr></thead><tbody>' + rows + '</tbody></table></div>' +
       '<p class="muted">Tap a hole to edit it.</p>' +
       (!r.done && r.id === S.currentRoundId ? '<button class="btn primary" data-a="resume">Back to the round</button>' : '') +
       '<button class="btn small" data-a="export">Export backup</button><button class="btn small" data-a="home">Home</button>' +
@@ -555,21 +676,25 @@
   function prepHtml() {
     var P = S.prep, r = cur(), open = r && !r.done;
     var th = P.thoughts.map(function (t, i) {
-      return '<div class="thought"><div class="ttext">' + esc(t) + '</div><button class="chip" data-a="delThought" data-v="' + i + '" aria-label="Remove">\u2715</button></div>';
+      return '<div class="thought"><span class="num">' + (i + 1) + '</span><div class="ttext">' + esc(t) + '</div><button class="chip" data-a="delThought" data-v="' + i + '" aria-label="Remove">✕</button></div>';
     }).join('') || '<p class="muted">No swing thoughts yet.</p>';
     var vids = P.videos.map(function (v, i) {
-      return '<div class="video"><a class="btn small vlink" href="' + esc(v.url) + '" target="_blank" rel="noopener">\u25b6 ' + esc(v.title) + '</a>' +
-        '<button class="chip" data-a="delVideo" data-v="' + i + '" aria-label="Remove">\u2715</button></div>';
+      return '<div class="video"><a class="vlink" href="' + esc(v.url) + '" target="_blank" rel="noopener">' +
+        '<span class="vthumb"><img src="' + IMG.ball + '" alt=""><span><svg width="12" height="12" viewBox="0 0 24 24" aria-hidden="true"><path d="M8 5v14l11-7z" fill="#0A0B0A"/></svg></span></span>' +
+        '<span class="vtitle">' + esc(v.title) + '</span></a>' +
+        '<button class="chip" data-a="delVideo" data-v="' + i + '" aria-label="Remove">✕</button></div>';
     }).join('') || '<p class="muted">No videos yet.</p>';
-    return '<div class="bar"><div class="nav"><button class="arrow" data-a="home" aria-label="Home">\u2302</button><div class="title">Before your round</div><span style="width:56px"></span></div></div>' +
+    return '<div class="photo prephead"><img src="' + IMG.bunker + '" alt="Sunrise through pines over a bunkered green and azaleas" style="object-position:50% 35%">' +
+      '<div class="over topbar"><button class="ibtn glass" data-a="home" aria-label="Home">' + ic('left') + '</button></div>' +
+      '<div class="over cap"><div class="kick">BEFORE YOUR ROUND</div><h1>Dew’s still on the grass.</h1><p>A few thoughts. One warm-up. Then the first tee.</p></div></div>' +
       '<div class="pad"><h2>Swing thoughts</h2>' + th +
-      '<div class="addrow"><input id="newThought" class="textin" maxlength="120" placeholder="e.g. Smooth tempo, finish high"><button class="btn small primary" data-a="addThought">Add thought</button></div>' +
-      '<h2>Videos</h2>' + vids +
-      '<div class="addrow"><input id="newVTitle" class="textin" maxlength="60" placeholder="Title, e.g. Wedge distance control">' +
-      '<input id="newVUrl" class="textin" inputmode="url" placeholder="Paste YouTube link"><p class="warn" id="vmsg"></p>' +
-      '<button class="btn small primary" data-a="addVideo">Add video</button></div>' +
-      '<p class="muted">Tip: in YouTube tap Share \u2192 Copy link, then paste it here. Videos open in the YouTube app.</p>' +
-      '<button class="btn primary" data-a="' + (open ? 'resume' : 'newRound') + '">' + (open ? 'Resume round' : 'Start round \u2013 Melville Glades') + '</button></div>';
+      '<div class="addrow"><input id="newThought" class="textin" maxlength="120" placeholder="e.g. Smooth tempo, finish high" aria-label="New swing thought"><button class="btn small" data-a="addThought">Add thought</button></div>' +
+      '<h2>Warm-up videos</h2>' + vids +
+      '<div class="addrow"><input id="newVTitle" class="textin" maxlength="60" placeholder="Title, e.g. Wedge distance control" aria-label="Video title">' +
+      '<input id="newVUrl" class="textin" inputmode="url" placeholder="Paste YouTube link" aria-label="YouTube link"><p class="warn" id="vmsg"></p>' +
+      '<button class="btn small" data-a="addVideo">Add video</button></div>' +
+      '<p class="muted">Tip: in YouTube tap Share → Copy link, then paste it here. Videos open in the YouTube app.</p>' +
+      '<button class="btn primary" data-a="' + (open ? 'resume' : 'newRound') + '">' + (open ? 'Resume round' : 'Walk to the first tee') + ic('arrow') + '</button></div>';
   }
 
   /* ---------- export ---------- */
@@ -599,6 +724,7 @@
     mode: function (v) { ui.mode = v; if (ui.mode === 'tee') ui.lie = 'fairway'; updateHole(); },
     lie: function (v) { ui.lie = v; updateHole(); },
     ground: function (v) { cur().ground = v; save(); updateHole(); },
+    cycleGround: function () { var r = cur(), o = ['soft', 'normal', 'firm']; r.ground = o[(o.indexOf(r.ground) + 1) % 3]; save(); updateHole(); },
     wind: windModal,
     wlive: function () { S.settings.windSource = 'live'; save(); maybeFetchWind(true); windModal(); updateHole(); },
     wdir: function (v) { S.settings.windSource = 'manual'; S.settings.manual.rel = +v; if (!S.settings.manual.speed) S.settings.manual.speed = 10; save(); windModal(); updateHole(); },
