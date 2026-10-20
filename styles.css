@@ -150,6 +150,9 @@ th { font-size: 13px; text-transform: uppercase; }
 .gcell.hitc { border-color: var(--accent); background: #E8F3EC; }
 .htab { font-size: 14px; }
 
+.filebtn { cursor: pointer; }
+.banner { margin: 12px 16px 0; padding: 12px; border-radius: 10px; background: #E8F3EC; border: 2.5px solid var(--accent); font-weight: 800; }
+
 /* passcode lock */
 .lock { text-align: center; padding-top: 48px; }
 .dots { display: flex; justify-content: center; gap: 18px; margin: 20px 0 4px; }

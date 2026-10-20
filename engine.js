@@ -43,11 +43,12 @@
     { id: 'UW', name: 'U Wedge',  type: 'wedge',  carry: 78,  total: 82, partials: { '3/4': 66, '1/2': 51 } }
   ];
 
-  /* Melville Glades (Offcourse scorecard) - editable in Settings */
+  /* Melville Glades, Blue Men tees (from George's MiScore card, 18 Oct 2026) - editable in Settings */
   var COURSE = {
-    name: 'Melville Glades',
+    name: 'Melville Glades', tees: 'Blue Men', siSource: 'miscore-blue',
     pars: [4, 5, 4, 4, 3, 4, 4, 5, 3, 4, 4, 4, 5, 3, 4, 4, 3, 5],
-    si:   [13, 14, 3, 7, 16, 5, 8, 11, 9, 2, 12, 1, 15, 17, 4, 6, 18, 10],
+    si:   [14, 6, 5, 8, 18, 7, 3, 10, 11, 2, 13, 1, 12, 16, 17, 4, 15, 9],
+    oldSi: [13, 14, 3, 7, 16, 5, 8, 11, 9, 2, 12, 1, 15, 17, 4, 6, 18, 10], // v0.2 Offcourse values, replaced
     slope: 124, scratch: 72
   };
   var APPROACH9 = ['longLeft', 'long', 'longRight', 'left', 'hit', 'right', 'shortLeft', 'short', 'shortRight'];
@@ -219,6 +220,23 @@
     if (score == null || !par) return null;
     return Math.max(0, par + (strokes || 0) - score + 2);
   }
+  /* Merge a scores file (e.g. from MiScore) into a round: scores, putts, points, pickups.
+     Other stats already recorded on the round are kept. */
+  function mergeScores(round, file) {
+    var n = 0;
+    file.holes.forEach(function (fh) {
+      var h = round.holes[fh.n - 1]; if (!h) return;
+      h.par = fh.par; h.score = fh.score; h.putts = fh.putts == null ? null : fh.putts;
+      h.points = fh.points; h.pickup = !!fh.pickup;
+      if (fh.si) h.si = fh.si;
+      if (fh.pickup) { h.fairway = null; h.approach = null; h.upDown = null; h.sandSave = null; }
+      n++;
+    });
+    if (file.dailyHcp != null) round.dailyHcp = file.dailyHcp;
+    round.done = round.holes.every(function (x) { return x.score != null; });
+    round.source = file.source || 'import';
+    return n;
+  }
   function normApproach(a) { return a === 'green' ? 'hit' : a; }
 
   /* ---------- stats ---------- */
@@ -226,7 +244,7 @@
     if (h == null || h.score == null) return null;
     var putts = h.putts || 0;
     var gir = (h.score - putts) <= (h.par - 2);
-    var udAttempt = !gir;
+    var udAttempt = !gir && h.upDown != null; // only count holes where U&D was recorded
     var sandAttempt = (h.sand || 0) >= 1 && !gir;
     var sandSaveFlag = h.sandSave != null ? h.sandSave : h.upDown; // v0.1 rounds had no sandSave
     return {
@@ -249,9 +267,15 @@
               sandAtt: 0, sandSaved: 0, wasted: 0, penalties: 0, sandShots: 0,
               fw: 0, fwHit: 0, chipIns: 0, points: 0, pointsHoles: 0, miss: {} };
     APPROACH9.forEach(function (k) { s.miss[k] = 0; });
+    s.statHoles = 0; s.pickups = 0;
     (holes || []).forEach(function (h) {
+      if (h && h.pickup && h.score != null) { // picked up: counts for score + points only
+        s.holes++; s.pickups++; s.score += h.score; s.par += h.par; s.putts += h.putts || 0;
+        if (h.points != null) { s.points += h.points; s.pointsHoles++; }
+        return;
+      }
       var st = holeStats(h); if (!st) return;
-      s.holes++; s.score += h.score; s.par += h.par; s.putts += h.putts || 0;
+      s.holes++; s.statHoles++; s.score += h.score; s.par += h.par; s.putts += h.putts || 0;
       if (st.gir) { s.gir++; s.girPutts += h.putts || 0; }
       if (st.upDownAttempt) { s.ud++; if (st.upDownMade) s.udMade++; }
       if (st.sandSaveAttempt) { s.sandAtt++; if (st.sandSaved) s.sandSaved++; }
@@ -264,7 +288,7 @@
     });
     function pct(a, b) { return b ? Math.round(100 * a / b) : null; }
     s.toPar = s.score - s.par;
-    s.girPct = pct(s.gir, s.holes);
+    s.girPct = pct(s.gir, s.statHoles);
     s.udPct = pct(s.udMade, s.ud);
     s.sandPct = pct(s.sandSaved, s.sandAtt);
     s.fwPct = pct(s.fwHit, s.fw);
@@ -274,7 +298,7 @@
 
   var api = {
     K: K, LIES: LIES, DEFAULT_BAG: DEFAULT_BAG, COURSE: COURSE, APPROACH9: APPROACH9, clone: clone,
-    dailyHandicap: dailyHandicap, strokesOnHole: strokesOnHole, stablefordPoints: stablefordPoints, normApproach: normApproach,
+    dailyHandicap: dailyHandicap, mergeScores: mergeScores, strokesOnHole: strokesOnHole, stablefordPoints: stablefordPoints, normApproach: normApproach,
     distanceM: distanceM, bearingDeg: bearingDeg,
     windFromLive: windFromLive, windFromRelative: windFromRelative, windLabel: windLabel,
     recommend: recommend, swingWord: swingWord,

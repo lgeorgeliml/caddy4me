@@ -13,7 +13,7 @@
   var app = document.getElementById('app');
   var modal = document.getElementById('modal');
   var S = load();
-  if (!S.course.si) S = migrate(S);
+  if (!S.course.si || S.course.siSource !== E.COURSE.siSource) S = migrate(S);
   save(); // persist any upgrade from older saved data
   var ui = freshHoleUi({ screen: 'home', holeIdx: 0, me: null, acc: null, gpsErr: '', card: null, summaryId: null, confirmReset: false });
   var map = null, watchId = null, wakeLock = null, windTimer = null, windBusy = false, windErr = false;
@@ -38,6 +38,12 @@
     s.course.pars = (s.course.pars || []).map(function (p, i) { return p || C.pars[i]; });
     while (s.course.pars.length < 18) s.course.pars.push(C.pars[s.course.pars.length]);
     if (!s.course.si) s.course.si = C.si.slice();
+    // v0.2 shipped Offcourse stroke indexes; swap them for the Blue Men card unless George edited them
+    if (s.course.siSource !== C.siSource) {
+      if (s.course.si.join(',') === C.oldSi.join(',')) s.course.si = C.si.slice();
+      s.course.siSource = C.siSource;
+      (s.rounds || []).forEach(function (r) { r.holes.forEach(function (h, i) { if (h.si && h.si === C.oldSi[i]) h.si = C.si[i]; }); });
+    }
     if (s.course.slope == null) s.course.slope = C.slope;
     if (s.course.scratch == null) s.course.scratch = C.scratch;
     if (s.settings.ga === undefined) s.settings.ga = 16.9;
@@ -297,7 +303,11 @@
     return E.stablefordPoints(h.par || holePar(r, i), h.score, E.strokesOnHole(roundDH(r), holeSI(r, i)));
   }
   function holesWithPoints(r) {
-    return r.holes.map(function (h, i) { var c = Object.assign({}, h); if (c.score != null) { c.par = c.par || holePar(r, i); c.points = holePoints(r, i, c); } return c; });
+    return r.holes.map(function (h, i) {
+      var c = Object.assign({}, h);
+      if (c.score != null) { c.par = c.par || holePar(r, i); if (c.points == null) c.points = holePoints(r, i, c); }
+      return c;
+    });
   }
 
   /* ---------- hole card (v0.2, MiScore-style layout) ---------- */
@@ -412,7 +422,7 @@
       '<div class="muted">(GA × slope ÷ 113 + (scratch − par ' + coursePar() + ')) × 0.93. Fixed for a round when it starts.</div></div>' +
       '<h2>Melville Glades holes</h2>' + (siOk ? '' : '<p class="warn">Stroke indexes must be 1–18, each used once.</p>') +
       '<table class="settab"><thead><tr><th>Hole</th><th>Par</th><th>Stroke index</th></tr></thead><tbody>' + rows + '</tbody></table>' +
-      '<p class="muted">Pre-loaded from the Offcourse scorecard – check against your club card.</p></div>';
+      '<p class="muted">Blue Men tees, from your MiScore card (18 Oct 2026).</p></div>';
   }
   app.addEventListener('change', function (e) {
     var t = e.target; if (!t.dataset || !t.dataset.set) return;
@@ -434,8 +444,9 @@
     var fwMark = { hit: '✓', left: '←', right: '→' };
     var rows = hs.map(function (h, i) {
       if (h.score == null) return '<tr><td>' + h.n + '</td><td>' + holePar(r, i) + '</td><td colspan="8">–</td></tr>';
+      if (h.pickup) return '<tr><td>' + h.n + '</td><td>' + h.par + '</td><td><b>P</b></td><td><b>' + (h.points || 0) + '</b></td><td colspan="6" class="muted">picked up \u00b7 counted as ' + h.score + '</td></tr>';
       var st = E.holeStats(h);
-      return '<tr data-a="editHole" data-v="' + i + '"><td>' + h.n + '</td><td>' + h.par + '</td><td><b>' + h.score + '</b></td><td><b>' + h.points + '</b></td><td>' + h.putts + '</td>' +
+      return '<tr data-a="editHole" data-v="' + i + '"><td>' + h.n + '</td><td>' + h.par + '</td><td><b>' + h.score + '</b></td><td><b>' + h.points + '</b></td><td>' + (h.putts != null ? h.putts : '') + '</td>' +
         '<td>' + (h.par >= 4 && h.fairway ? fwMark[h.fairway] : '') + '</td><td>' + (st.gir ? '✓' : '') + '</td>' +
         '<td>' + (st.upDownAttempt ? (h.upDown ? '✓' : '✗') : '') + '</td><td>' + (h.penalties || '') + '</td><td>' + (h.wasted || '') + '</td></tr>';
     }).join('');
@@ -445,7 +456,7 @@
       tile('Stableford', s.pointsHoles ? s.points + ' pts' : '–', 'Daily handicap ' + roundDH(r)) +
       tile('Score', s.holes ? s.score + ' (' + signed(s.toPar) + ')' : '–', s.holes + ' holes') +
       tile('Fairways', pc(s.fwPct), s.fwHit + ' of ' + s.fw) +
-      tile('GIR', pc(s.girPct), s.gir + ' of ' + s.holes) +
+      tile('GIR', pc(s.girPct), s.gir + ' of ' + s.statHoles + (s.pickups ? ' \u00b7 ' + s.pickups + ' pick-ups' : '')) +
       tile('Putts', s.putts, (s.puttsPerGir != null ? s.puttsPerGir + ' per GIR · ' : '') + s.chipIns + ' chip-ins') +
       tile('Up &amp; down', pc(s.udPct), s.udMade + ' of ' + s.ud) +
       tile('Sand saves', pc(s.sandPct), s.sandSaved + ' of ' + s.sandAtt + ' · ' + s.sandShots + ' sand shots') +
@@ -469,8 +480,42 @@
         (s.holes ? s.score + ' (' + signed(s.toPar) + ') over ' + s.holes + ' holes' : 'not started') + '</button>';
     }).join('');
     return '<div class="bar"><div class="nav"><button class="arrow" data-a="home" aria-label="Home">⌂</button><div class="title">Past rounds</div><span style="width:56px"></span></div></div>' +
-      '<div class="pad">' + (list || '<p class="sub">No rounds yet.</p>') + '</div>';
+      '<div class="pad">' + (list || '<p class="sub">No rounds yet.</p>') +
+      '<h2>Import scores</h2><p class="muted">Load a Caddy4Me scores file (e.g. from your MiScore card). It updates strokes, putts and Stableford points for that date and keeps the other stats you entered.</p>' +
+      '<p class="warn" id="impmsg">' + esc(ui.importMsg || '') + '</p>' +
+      '<label class="btn small primary filebtn">Choose scores file<input type="file" id="impfile" accept=".json,application/json" hidden></label></div>';
   }
+  function importScores(file) {
+    var rd = new FileReader();
+    rd.onload = function () {
+      var f;
+      try { f = JSON.parse(rd.result); } catch (e) { ui.importMsg = 'That file isn\u2019t a scores file.'; render(); return; }
+      if (!f || f.type !== 'caddy4me-scores' || !/^\d{4}-\d{2}-\d{2}$/.test(f.date || '') || !Array.isArray(f.holes) ||
+          !f.holes.every(function (h) { return h && h.n >= 1 && h.n <= 18 && h.par >= 3 && h.par <= 6 && (h.score == null || (h.score >= 1 && h.score <= 20)); })) {
+        ui.importMsg = 'That file isn\u2019t a valid Caddy4Me scores file.'; render(); return;
+      }
+      var r = S.rounds.filter(function (x) { return x.date === f.date; })[0];
+      var created = false;
+      if (!r) {
+        var holes = [];
+        for (var i = 0; i < 18; i++) holes.push({ n: i + 1, par: S.course.pars[i], si: S.course.si[i], score: null, putts: null, approach: null, upDown: null, sand: 0, penalties: 0, wasted: 0 });
+        r = { id: f.date + 'T00:00:00.000Z', date: f.date, ground: 'normal', holes: holes, done: false };
+        S.rounds.push(r); created = true;
+      }
+      var n = E.mergeScores(r, f);
+      save();
+      ui.importMsg = '';
+      ui.summaryId = r.id; go('summary');
+      setTimeout(function () { alertBanner((created ? 'Added' : 'Updated') + ' round ' + f.date + ' \u2013 ' + n + ' holes from ' + (f.source || 'file')); }, 30);
+    };
+    rd.readAsText(file);
+  }
+  function alertBanner(msg) {
+    var b = document.createElement('div'); b.className = 'banner'; b.textContent = msg;
+    app.insertBefore(b, app.firstChild.nextSibling);
+    setTimeout(function () { b.remove(); }, 6000);
+  }
+  app.addEventListener('change', function (e) { if (e.target.id === 'impfile' && e.target.files[0]) importScores(e.target.files[0]); });
 
   /* ---------- bag ---------- */
   function bagHtml() {
