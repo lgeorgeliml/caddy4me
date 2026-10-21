@@ -830,8 +830,13 @@
   app.addEventListener('click', onClick);
   modal.addEventListener('click', function (e) { if (e.target === modal) { closeModal(); return; } onClick(e); });
 
-  if ('serviceWorker' in navigator && location.protocol === 'https:') {
-    navigator.serviceWorker.register('sw.js').catch(function () {});
+  if ('serviceWorker' in navigator && (location.protocol === 'https:' || location.hostname === 'localhost')) {
+    navigator.serviceWorker.register('sw.js', { updateViaCache: 'none' }).then(function (reg) { reg.update(); }).catch(function () {});
+    // a new release took over: reload once so the new screens show straight away
+    var hadController = !!navigator.serviceWorker.controller, reloaded = false;
+    navigator.serviceWorker.addEventListener('controllerchange', function () {
+      if (!hadController || reloaded) return; reloaded = true; window.location.reload();
+    });
   }
   window.__c4m = { S: S, ui: ui };
 
