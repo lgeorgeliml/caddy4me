@@ -43,7 +43,7 @@
     { id: 'UW', name: 'U Wedge',  type: 'wedge',  carry: 78,  total: 82, partials: { '3/4': 66, '1/2': 51 } }
   ];
 
-  /* Melville Glades, Blue Men tees (from George's MiScore card, 18 Oct 2026) - editable in Settings */
+  /* Melville Glades, Blue Men tees (from a MiScore card, 18 Oct 2026) - editable in Settings */
   var COURSE = {
     name: 'Melville Glades', tees: 'Blue Men', siSource: 'miscore-blue',
     pars: [4, 5, 4, 4, 3, 4, 4, 5, 3, 4, 4, 4, 5, 3, 4, 4, 3, 5],
@@ -243,7 +243,7 @@
   function holeStats(h) {
     if (h == null || h.score == null) return null;
     var putts = h.putts || 0;
-    var gir = (h.score - putts) <= (h.par - 2);
+    var gir = typeof h.gir === 'boolean' ? h.gir : (h.score - putts) <= (h.par - 2); // explicit GIR wins
     var udAttempt = !gir && h.upDown != null; // only count holes where U&D was recorded
     var sandAttempt = (h.sand || 0) >= 1 && !gir;
     var sandSaveFlag = h.sandSave != null ? h.sandSave : h.upDown; // v0.1 rounds had no sandSave
