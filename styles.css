@@ -326,3 +326,9 @@ th { font-size: 11px; letter-spacing: .08em; text-transform: uppercase; color: v
 button.card { width: 100%; text-align: left; color: inherit; font: inherit; display: block; }
 .lock h1 { text-transform: uppercase; }
 .tile .v small { font-size: 15px; }
+
+/* v0.4 Tournament Mode */
+.tag.tour { background: #FFB547; color: #0A0B0A; }
+.trio.one { grid-template-columns: 1fr; }
+.tournote { margin: 12px 4px; padding: 12px 14px; border: 1px solid #FFB547; border-radius: 14px; color: var(--soft2); font-size: 14px; }
+.herocard .tag.hometour { left: auto; right: 14px; top: 14px; }

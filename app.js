@@ -60,6 +60,12 @@
   function today() { var d = new Date(); return d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0'); }
   function freshHoleUi(o) { o.target = null; o.mode = 'tee'; o.lie = 'fairway'; o.manualDist = null; o.shotFrom = null; o.centered = o.centered || false; return o; }
   function minsAgo(t) { var m = Math.round((Date.now() - t) / 60000); return m <= 0 ? 'just now' : m + ' min ago'; }
+  /* ---------- Tournament Mode (v0.4) ----------
+   * Rule 4.3: no plays-like distances, club or aim advice, or wind/lie/firmness calculations.
+   * A round started (or switched) into Tournament Mode stays tournament until it is finished or discarded. */
+  function roundOpen(r) { return !!(r && !r.done); }
+  function tourLocked() { var r = cur(); return roundOpen(r) && !!r.tournament; }
+  function tourOn() { var r = cur(); return roundOpen(r) ? !!r.tournament : !!S.settings.tournament; }
   function playerName() { return (S.settings.name || '').trim(); }
   function signed(n) { return n === 0 ? 'E' : (n > 0 ? '+' + n : String(n)); }
 
@@ -168,7 +174,7 @@
     return '<div class="home">' +
       '<div class="hello"><div><div class="date">' + niceDate() + '</div><div class="name">' + greeting() + (playerName() ? ', ' + esc(playerName()) : '') + '</div></div>' + weather + '</div>' +
       '<div class="photo herocard"><img src="' + IMG.amen + '" alt="Stone bridge over the creek to a par-3 green lined with azaleas">' +
-      '<span class="over tag lime">MELVILLE GLADES</span>' +
+      '<span class="over tag lime">MELVILLE GLADES</span>' + (tourOn() ? '<span class="over tag tour hometour">TOURNAMENT MODE</span>' : '') +
       '<div class="over cap"><div class="mood">' + mood() + '</div><div class="info">' + (open ? 'Round in progress · next up hole ' + nextHole : '18 holes · Daily handicap ' + (dh != null ? dh : '–')) + '</div></div></div>' +
       lastCard +
       rowBtn('prep', 'drop', 'Before your round', (tp ? tp + ' swing thought' + (tp > 1 ? 's' : '') : 'Add swing thoughts') + ' · ' + vp + ' video' + (vp === 1 ? '' : 's')) +
@@ -186,13 +192,13 @@
         : '<label class="row-btn filebtn"><span class="badge">' + ic('save') + '</span><span class="t"><b>Restore backup</b><span>Load a saved copy onto this phone</span></span>' + ic('right') +
           '<input type="file" id="restorefile" accept=".json,application/json" hidden></label>') + '</div>' +
       (ui.restoreMsg ? '<p class="warn">' + esc(ui.restoreMsg) + '</p>' : '') +
-      '<p class="note">For social and practice rounds. Club advice from a device isn’t allowed in competition (Rule 4.3).</p></div>';
+      '<p class="note">Club advice from a device isn’t allowed in competition (Rule 4.3). Use Tournament Mode to turn off features not allowed during competition.</p></div>';
   }
   function firstOpenHole(r) { for (var i = 0; i < 18; i++) if (r.holes[i].score == null) return i; return 17; }
   function newRound() {
     var holes = [];
     for (var i = 0; i < 18; i++) holes.push({ n: i + 1, par: S.course.pars[i], si: S.course.si[i], score: null, putts: null, approach: null, upDown: null, sand: 0, penalties: 0, wasted: 0 });
-    var r = { id: new Date().toISOString(), date: today(), ground: 'normal', holes: holes, done: false, dailyHcp: currentDH(), player: playerName() || null };
+    var r = { id: new Date().toISOString(), date: today(), ground: 'normal', holes: holes, done: false, dailyHcp: currentDH(), player: playerName() || null, tournament: !!S.settings.tournament };
     S.rounds.push(r); S.currentRoundId = r.id; save();
     ui.holeIdx = 0; freshHoleUi(ui); go('hole');
   }
@@ -200,23 +206,27 @@
   /* ---------- hole screen ---------- */
   function renderHole() {
     var lies = LIE_KEYS.map(function (k) { return '<button class="chip" data-a="lie" data-v="' + k + '">' + E.LIES[k].label + '</button>'; }).join('');
+    var T = tourOn();
     app.innerHTML =
       '<div class="hole">' +
       '<div class="topbar"><button class="ibtn" data-a="home" aria-label="Home">' + ic('home') + '</button>' +
       '<span class="tag line gpstag" id="gpstag"><span class="dotl"></span><span id="gpstxt">GPS</span></span>' +
+      (T ? '<span class="tag tour" id="tourtag">TOURNAMENT</span>' : '') +
       '<div class="pair"><button class="ibtn" data-a="prevHole" aria-label="Previous hole">' + ic('left') + '</button>' +
       '<button class="ibtn" data-a="nextHole" aria-label="Next hole">' + ic('right') + '</button></div></div>' +
       '<button class="bigdist" data-a="manualDist" id="dist" aria-label="Distance – tap to type one"></button>' +
-      '<div class="trio"><button class="stat" data-a="wind" id="windchip" aria-label="Wind – tap to change"></button>' +
-      '<div class="stat" id="playslike"></div>' +
-      '<button class="stat" data-a="cycleGround" id="groundstat" aria-label="Ground – tap to change"></button></div>' +
+      (T ? '<div class="trio one"><div class="stat" id="windchip" aria-label="Forecast wind"></div></div>'
+         : '<div class="trio"><button class="stat" data-a="wind" id="windchip" aria-label="Wind – tap to change"></button>' +
+           '<div class="stat" id="playslike"></div>' +
+           '<button class="stat" data-a="cycleGround" id="groundstat" aria-label="Ground – tap to change"></button></div>') +
       '<div class="mapwrap"><div id="map"></div>' +
-      '<div class="mapseg"><div class="seg"><button data-a="mode" data-v="tee">Tee</button><button data-a="mode" data-v="approach">Approach</button></div></div>' +
+      (T ? '' : '<div class="mapseg"><div class="seg"><button data-a="mode" data-v="tee">Tee</button><button data-a="mode" data-v="approach">Approach</button></div></div>') +
       '<div class="maphint" id="maphint" hidden></div>' +
       '<div class="mapbtns"><button data-a="zin" aria-label="Zoom in">+</button><button data-a="zout" aria-label="Zoom out">−</button>' +
       '<button data-a="recenter" aria-label="Centre on me">◎</button></div></div>' +
-      '<div id="liebox" class="shotopts"><div class="label">Lie</div><div class="chips">' + lies + '</div></div>' +
-      '<section class="call" id="call"></section>' +
+      (T ? '<p class="note tournote">Tournament Mode: distance only. Club advice, plays-like distances and wind or lie calculations are off for this round.</p>'
+         : '<div id="liebox" class="shotopts"><div class="label">Lie</div><div class="chips">' + lies + '</div></div>' +
+           '<section class="call" id="call"></section>') +
       '<button class="btn primary" data-a="holeDone">Enter Stats</button></div>';
     map = new window.SatMap($('map'), { zoom: 18, onTap: onMapTap });
     if (ui.me) { map.setView(ui.me, 18); map.setMe(ui.me, ui.acc); ui.centered = true; }
@@ -321,21 +331,28 @@
     }
     return '<span class="k">Wind</span><span class="v">' + windArrow(sw.rel, sw.speed) + v + '</span><span class="s">' + esc(s) + '</span>';
   }
+  function forecastTile() {
+    // Tournament Mode: raw forecast only, not related to the shot line and not used in any calculation
+    var v = S.wind ? Math.round(S.wind.speed) : '\u2014';
+    var s = S.wind ? 'km/h from ' + compass(S.wind.from) + ' \u00b7 forecast' : (windErr ? 'forecast unavailable' : 'loading forecast\u2026');
+    return '<span class="k">Wind forecast</span><span class="v">' + v + '</span><span class="s">' + esc(s) + '</span>';
+  }
   var GROUND_LABEL = { soft: ['Soft', 'wet / dewy'], normal: ['Normal', 'usual run'], firm: ['Firm', 'extra run'] };
 
   function updateHole() {
     if (ui.screen !== 'hole' || !$('dist')) return;
     var r = cur();
-    var g = shotGeometry(), sw = shotWind(g.bearing);
-    $('windchip').innerHTML = windTile(sw, g.bearing);
+    var T = tourOn();
+    var g = shotGeometry(), sw = T ? null : shotWind(g.bearing);
+    $('windchip').innerHTML = T ? forecastTile() : windTile(sw, g.bearing);
     var gl = GROUND_LABEL[r.ground] || GROUND_LABEL.normal;
-    $('groundstat').innerHTML = '<span class="k">Ground</span><span class="v">' + gl[0] + '</span><span class="s">' + gl[1] + '</span>';
+    if ($('groundstat')) $('groundstat').innerHTML = '<span class="k">Ground</span><span class="v">' + gl[0] + '</span><span class="s">' + gl[1] + '</span>';
 
     var hint = $('maphint'), msg = '', bad = false;
     if (ui.gpsErr) { msg = ui.gpsErr; bad = ui.gpsErr.indexOf('blocked') >= 0; }
     else if (!ui.me) msg = 'Waiting for GPS…';
     else if (ui.acc > 10) { msg = 'GPS weak ±' + Math.round(ui.acc) + ' m'; bad = true; }
-    else if (!ui.target && !ui.manualDist) msg = ui.mode === 'tee' ? 'Tap your landing spot' : 'Tap the pin or your target';
+    else if (!ui.target && !ui.manualDist) msg = T ? 'Tap a point to measure the distance' : ui.mode === 'tee' ? 'Tap your landing spot' : 'Tap the pin or your target';
     hint.hidden = !msg; hint.textContent = msg; hint.classList.toggle('gpsbad', bad);
     $('gpstxt').textContent = ui.me ? 'GPS ±' + Math.round(ui.acc || 0) + ' M' : (ui.gpsErr && bad ? 'GPS BLOCKED' : 'GPS…');
     $('gpstag').classList.toggle('bad', !ui.me || ui.acc > 10);
@@ -343,11 +360,12 @@
     var head = '<span class="hn">Hole ' + (ui.holeIdx + 1) + ' <span>· PAR ' + holePar(r, ui.holeIdx) + ' · SI ' + holeSI(r, ui.holeIdx) + '</span></span>';
     var d = $('dist');
     if (g.D) d.innerHTML = head + '<span class="num"><b>' + Math.round(g.D) + '</b><i>M</i></span><span class="src">' +
-      (g.src === 'entered' ? 'entered · tap to change' : (ui.mode === 'tee' ? 'to your landing spot' : 'to target') + ' · tap to type') + '</span>';
+      (g.src === 'entered' ? 'entered · tap to change' : (!T && ui.mode === 'tee' ? 'to your landing spot' : 'to target') + ' · tap to type') + '</span>';
     else d.innerHTML = head + '<span class="num"><b>—</b><i>M</i></span><span class="src">tap the map, or tap here to type</span>';
 
     Array.prototype.forEach.call(app.querySelectorAll('[data-a="mode"]'), function (b) { b.classList.toggle('on', b.dataset.v === ui.mode); });
     Array.prototype.forEach.call(app.querySelectorAll('[data-a="lie"]'), function (b) { b.classList.toggle('on', b.dataset.v === ui.lie); });
+    if (T) return; // Tournament Mode: distance only, no recommendation is calculated
     $('liebox').hidden = ui.mode === 'tee';
 
     var call = $('call'), pl = $('playslike');
@@ -533,7 +551,11 @@
         '<td><input class="smallin" type="number" inputmode="numeric" data-set="si:' + i + '" value="' + S.course.si[i] + '"></td></tr>';
     }).join('');
     return '<div class="bar"><div class="nav"><button class="arrow" data-a="home" aria-label="Home">⌂</button><div class="title">Settings</div><span style="width:56px"></span></div></div>' +
-      '<div class="pad"><h2>Player</h2>' +
+      '<div class="pad"><h2>Tournament Mode</h2>' +
+      '<button class="tgl' + (tourOn() ? ' on' : '') + '" data-a="tour" id="tourtgl"' + (tourLocked() ? ' disabled' : '') + '><span class="dot"></span>Tournament Mode ' + (tourOn() ? 'on' : 'off') + '</button>' +
+      '<p class="muted">Use Tournament Mode to turn off features not allowed during competition: plays-like distances, club and aim advice, and wind, lie or firmness calculations. GPS distance, the forecast wind and scoring stay on.</p>' +
+      (tourLocked() ? '<p class="warn" id="tourlock">Locked on for the round in progress. Finish or discard that round to turn it off.</p>' : '') +
+      '<h2>Player</h2>' +
       '<label class="namefield">Your name<input type="text" maxlength="40" autocomplete="name" data-set="name" placeholder="e.g. Alex" value="' + esc(S.settings.name || '') + '"></label>' +
       '<p class="muted">Shown on the Home screen, on each new round and in backup file names. Each person uses Caddy4Me on their own phone with their own bag and handicap.</p>' +
       '<h2>Handicap</h2>' +
@@ -585,7 +607,7 @@
     var grid = GRID.map(function (g) { return '<div class="gcell' + (g[0] === 'hit' ? ' hitc' : '') + '"><span>' + g[1] + '</span><b>' + s.miss[g[0]] + '</b></div>'; }).join('');
     return '<div class="photo sumhead"><img src="' + IMG.amen + '" alt="Stone bridge and par-3 green at the corner of the course" style="object-position:50% 40%">' +
       '<div class="over topbar"><button class="ibtn glass" data-a="home" aria-label="Home">' + ic('left') + '</button>' +
-      '<span class="tag white">' + ic('flag') + (r.done ? 'ROUND COMPLETE' : s.holes + ' OF 18 HOLES') + '</span>' +
+      '<span class="tag white">' + ic('flag') + (r.tournament ? 'TOURNAMENT \u00b7 ' : '') + (r.done ? 'ROUND COMPLETE' : s.holes + ' OF 18 HOLES') + '</span>' +
       '<button class="ibtn glass" data-a="export" aria-label="Export backup">' + ic('save') + '</button></div>' +
       '<div class="over big"><div class="n"><b>' + (s.pointsHoles ? s.points : '–') + '</b><i>PTS</i></div>' +
       '<div class="when">' + ((r.player || playerName()) ? esc(r.player || playerName()) + ' · ' : '') + esc(longDate(r.date)) + ' · Melville Glades</div></div></div>' +
@@ -614,7 +636,7 @@
   function pastHtml() {
     var list = S.rounds.slice().reverse().map(function (r) {
       var s = E.roundSummary(r.holes);
-      return '<button class="btn small" data-a="openRound" data-v="' + esc(r.id) + '">' + esc(r.date) + ' · ' +
+      return '<button class="btn small" data-a="openRound" data-v="' + esc(r.id) + '">' + (r.tournament ? 'Tournament \u00b7 ' : '') + esc(r.date) + ' · ' +
         (s.holes ? s.score + ' (' + signed(s.toPar) + ') over ' + s.holes + ' holes' : 'not started') + '</button>';
     }).join('');
     return '<div class="bar"><div class="nav"><button class="arrow" data-a="home" aria-label="Home">⌂</button><div class="title">Past rounds</div><span style="width:56px"></span></div></div>' +
@@ -744,11 +766,11 @@
     zin: function () { if (map) map.zoomBy(1); },
     zout: function () { if (map) map.zoomBy(-1); },
     recenter: function () { if (map && ui.me) map.setView(ui.me); },
-    mode: function (v) { ui.mode = v; if (ui.mode === 'tee') ui.lie = 'fairway'; updateHole(); },
-    lie: function (v) { ui.lie = v; updateHole(); },
+    mode: function (v) { if (tourOn()) return; ui.mode = v; if (ui.mode === 'tee') ui.lie = 'fairway'; updateHole(); },
+    lie: function (v) { if (tourOn()) return; ui.lie = v; updateHole(); },
     ground: function (v) { cur().ground = v; save(); updateHole(); },
-    cycleGround: function () { var r = cur(), o = ['soft', 'normal', 'firm']; r.ground = o[(o.indexOf(r.ground) + 1) % 3]; save(); updateHole(); },
-    wind: windModal,
+    cycleGround: function () { if (tourOn()) return; var r = cur(), o = ['soft', 'normal', 'firm']; r.ground = o[(o.indexOf(r.ground) + 1) % 3]; save(); updateHole(); },
+    wind: function () { if (!tourOn()) windModal(); },
     wlive: function () { S.settings.windSource = 'live'; save(); maybeFetchWind(true); windModal(); updateHole(); },
     wdir: function (v) { S.settings.windSource = 'manual'; S.settings.manual.rel = +v; if (!S.settings.manual.speed) S.settings.manual.speed = 10; save(); windModal(); updateHole(); },
     wspd: function (v) { S.settings.windSource = 'manual'; S.settings.manual.speed = +v; save(); windModal(); updateHole(); },
@@ -786,6 +808,13 @@
       autoCard(); rerenderCard();
     },
     noop: function () {},
+    tour: function () {
+      if (tourLocked()) return;                       // locked on until the round ends
+      S.settings.tournament = !S.settings.tournament;
+      var r = cur();
+      if (S.settings.tournament && roundOpen(r)) r.tournament = true;   // switching on mid-round protects that round too
+      save(); render();
+    },
     settings: function () { go('settings'); },
     saveCard: saveCard,
     doRestore: function () {

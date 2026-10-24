@@ -1,5 +1,5 @@
 /* Caddy4Me service worker: offline app shell + cached map tiles */
-var SHELL = 'c4m-shell-v3'; // bump this on every release so phones drop the old copy
+var SHELL = 'c4m-shell-v4'; // bump this on every release so phones drop the old copy
 var FONTS = 'c4m-fonts-v1';
 var TILES = 'c4m-tiles-v1';
 var FILES = ['./', 'index.html', 'styles.css', 'engine.js', 'map.js', 'app.js', 'manifest.webmanifest', 'icons/icon-192.png', 'icons/icon-512.png',
