@@ -210,11 +210,13 @@
     app.innerHTML =
       '<div class="hole">' +
       '<div class="topbar"><button class="ibtn" data-a="home" aria-label="Home">' + ic('home') + '</button>' +
-      '<span class="tag line gpstag" id="gpstag"><span class="dotl"></span><span id="gpstxt">GPS</span></span>' +
       (T ? '<span class="tag tour" id="tourtag">TOURNAMENT</span>' : '') +
       '<div class="pair"><button class="ibtn" data-a="prevHole" aria-label="Previous hole">' + ic('left') + '</button>' +
       '<button class="ibtn" data-a="nextHole" aria-label="Next hole">' + ic('right') + '</button></div></div>' +
+      '<div class="holehead"><span class="hn" id="hn"></span>' +
+      '<span class="tag line gpstag" id="gpstag"><span class="dotl"></span><span id="gpstxt">GPS</span></span></div>' +
       '<button class="bigdist" data-a="manualDist" id="dist" aria-label="Distance – tap to type one"></button>' +
+      '<div class="greenbox" id="greenbox" hidden></div><div class="bunkerbox" id="bunkerbox" hidden></div>' +
       (T ? '<div class="trio one"><div class="stat" id="windchip" aria-label="Forecast wind"></div></div>'
          : '<div class="trio"><button class="stat" data-a="wind" id="windchip" aria-label="Wind – tap to change"></button>' +
            '<div class="stat" id="playslike"></div>' +
@@ -228,8 +230,9 @@
          : '<div id="liebox" class="shotopts"><div class="label">Lie</div><div class="chips">' + lies + '</div></div>' +
            '<section class="call" id="call"></section>') +
       '<button class="btn primary" data-a="holeDone">Enter Stats</button></div>';
-    map = new window.SatMap($('map'), { zoom: 18, onTap: onMapTap });
-    if (ui.me) { map.setView(ui.me, 18); map.setMe(ui.me, ui.acc); ui.centered = true; }
+    map = new window.SatMap($('map'), { zoom: 18, onTap: onMapTap, onPinDrag: onPinDrag, imagery: S.settings.imagery || 'standard' });
+    if (holeData()) { applyHoleView(); if (ui.me) map.setMe(ui.me, ui.acc); }
+    else if (ui.me) { map.setView(ui.me, 18); map.setMe(ui.me, ui.acc); ui.centered = true; }
     if (ui.target) map.setTarget(ui.target);
     startGps(); requestWake(); maybeFetchWind(false);
     if (!windTimer) windTimer = setInterval(function () { maybeFetchWind(false); }, 60000);
@@ -249,7 +252,7 @@
       ui.me = { lat: p.coords.latitude, lon: p.coords.longitude };
       ui.acc = p.coords.accuracy || 0;
       if (map) {
-        if (!ui.centered) { map.setView(ui.me, 18); ui.centered = true; }
+        if (!ui.centered && !holeData()) { map.setView(ui.me, 18); ui.centered = true; }
         map.setMe(ui.me, ui.acc);
       }
       checkNewShot();
@@ -297,9 +300,47 @@
     }).catch(function () { windErr = true; }).then(function () { windBusy = false; if (ui.screen === 'hole') updateHole(); });
   }
 
+  /* ---------- hole view (v0.5) ---------- */
+  var CC = window.C4MCourse;
+  function courseData() { return S.courseMap || window.C4M_COURSE || null; }
+  function holeData() { return CC && courseData() ? CC.hole(courseData(), ui.holeIdx + 1) : null; }
+  function pinFor(r) { var p = r && r.pins && r.pins[ui.holeIdx]; return p ? { lat: p.lat, lon: p.lon } : null; }
+  function applyHoleView() {
+    var h = holeData(); if (!map) return;
+    if (!h) { map.setBearing(0); map.setShapes([]); map.setPin(null); return; }
+    var shapes = [];
+    (h.fairways || []).forEach(function (p) { shapes.push({ kind: 'fairway', pts: p.map(CC.ll) }); });
+    (h.tees || []).forEach(function (p) { shapes.push({ kind: 'tee', pts: p.map(CC.ll) }); });
+    shapes.push({ kind: 'line', pts: h.line.map(CC.ll) });
+    (h.bunkers || []).forEach(function (p) { shapes.push({ kind: 'bunker', pts: p.map(CC.ll) }); });
+    if (h.green) shapes.push({ kind: 'green', pts: h.green.map(CC.ll) });
+    map.setShapes(shapes);
+    var pts = h.line.map(CC.ll).concat(h.green ? h.green.map(CC.ll) : []).concat((h.tees || []).reduce(function (a, t) { return a.concat(t.map(CC.ll)); }, []));
+    map.fit(pts, CC.holeBearing(h), 28);
+    map.setPin(pinFor(cur()) || CC.greenCentre(h));
+    ui.centered = true;
+  }
+  function onPinDrag(ll, done) {
+    var r = cur(); if (!r) return;
+    r.pins = r.pins || {};
+    r.pins[ui.holeIdx] = { lat: ll.lat, lon: ll.lon };
+    if (done) save();
+    updateHole();
+  }
+  function greenNumbers() {
+    var h = holeData(); if (!h || !ui.me) return null;
+    var f = CC.greenFMB(ui.me, h), p = pinFor(cur());
+    return { front: f.front, middle: f.middle, back: f.back, inside: f.inside, pin: p ? E.distanceM(ui.me, p) : null, pinLL: p, mid: CC.greenCentre(h),
+      bunkers: CC.bunkersAhead(ui.me, h, 3) };
+  }
   function shotGeometry() {
     if (ui.manualDist) return { D: ui.manualDist, bearing: ui.target && ui.me ? E.bearingDeg(ui.me, ui.target) : null, src: 'entered' };
     if (ui.target && ui.me) return { D: E.distanceM(ui.me, ui.target), bearing: E.bearingDeg(ui.me, ui.target), src: 'gps' };
+    var gn = greenNumbers();
+    if (gn && (ui.mode !== 'tee' || tourOn() || holeData().par === 3)) {
+      var to = gn.pinLL || gn.mid;
+      return { D: gn.pin != null ? gn.pin : gn.middle, bearing: E.bearingDeg(ui.me, to), src: gn.pin != null ? 'pin' : 'middle' };
+    }
     return { D: null, bearing: null, src: null };
   }
   function shotWind(bearing) {
@@ -357,11 +398,23 @@
     $('gpstxt').textContent = ui.me ? 'GPS ±' + Math.round(ui.acc || 0) + ' M' : (ui.gpsErr && bad ? 'GPS BLOCKED' : 'GPS…');
     $('gpstag').classList.toggle('bad', !ui.me || ui.acc > 10);
 
-    var head = '<span class="hn">Hole ' + (ui.holeIdx + 1) + ' <span>· PAR ' + holePar(r, ui.holeIdx) + ' · SI ' + holeSI(r, ui.holeIdx) + '</span></span>';
+    $('hn').innerHTML = 'Hole ' + (ui.holeIdx + 1) + ' <span>· PAR ' + holePar(r, ui.holeIdx) + ' · SI ' + holeSI(r, ui.holeIdx) + '</span>';
     var d = $('dist');
-    if (g.D) d.innerHTML = head + '<span class="num"><b>' + Math.round(g.D) + '</b><i>M</i></span><span class="src">' +
-      (g.src === 'entered' ? 'entered · tap to change' : (!T && ui.mode === 'tee' ? 'to your landing spot' : 'to target') + ' · tap to type') + '</span>';
-    else d.innerHTML = head + '<span class="num"><b>—</b><i>M</i></span><span class="src">tap the map, or tap here to type</span>';
+    var SRC = { entered: 'entered · tap to change', pin: 'to the pin · tap to type', middle: 'to middle of green · tap to type' };
+    if (g.D) d.innerHTML = '<span class="num"><b>' + Math.round(g.D) + '</b><i>M</i></span><span class="src">' +
+      (SRC[g.src] || ((!T && ui.mode === 'tee' ? 'to your landing spot' : 'to target') + ' · tap to type')) + '</span>';
+    else d.innerHTML = '<span class="num"><b>—</b><i>M</i></span><span class="src">tap the map, or tap here to type</span>';
+    var gn = greenNumbers(), gb = $('greenbox'), bb = $('bunkerbox');
+    gb.hidden = !gn; bb.hidden = !gn || !gn.bunkers.length;
+    if (gn) {
+      gb.innerHTML = '<div><span class="k">Front</span><b>' + Math.round(gn.front) + '</b></div><div class="mid"><span class="k">Middle</span><b>' + Math.round(gn.middle) + '</b></div>' +
+        '<div><span class="k">Back</span><b>' + Math.round(gn.back) + '</b></div>' +
+        '<div class="pinc' + (gn.pin != null ? '' : ' unset') + '"><span class="k">Pin</span><b>' + (gn.pin != null ? Math.round(gn.pin) : '\u2014') + '</b>' +
+        '<span class="s">' + (gn.pin != null ? 'today' : 'drag flag') + '</span></div>';   // same height either way, so dragging never shifts the page
+      bb.innerHTML = gn.bunkers.map(function (b, i) {
+        return '<div class="bk"><span class="k">' + (b.nearGreen ? 'Greenside bunker' : 'Bunker') + '</span><span>reach <b>' + Math.round(b.reach) + '</b></span><span>carry <b>' + Math.round(b.carry) + '</b></span></div>';
+      }).join('');
+    }
 
     Array.prototype.forEach.call(app.querySelectorAll('[data-a="mode"]'), function (b) { b.classList.toggle('on', b.dataset.v === ui.mode); });
     Array.prototype.forEach.call(app.querySelectorAll('[data-a="lie"]'), function (b) { b.classList.toggle('on', b.dataset.v === ui.lie); });
@@ -395,7 +448,7 @@
     var n = ui.holeIdx + delta;
     if (n < 0 || n > 17) return;
     ui.holeIdx = n; freshHoleUi(ui);
-    if (map) map.setTarget(null);
+    if (map) { map.setTarget(null); applyHoleView(); }
     maybeFetchWind(true);
     updateHole();
   }
@@ -526,7 +579,7 @@
       cstep('sand', 'Sand shots', 'Total: <b>' + T.sandShots + '</b>') +
       cstep('wasted', 'Wasted shots', 'Total: <b>' + T.wasted + '</b>', 'Duffs, shanks, whiffs, 3-putts, chips not on') +
       cstep('penalties', 'Penalty shots', 'Total: <b>' + T.penalties + '</b>') +
-      '</div><div class="footbar"><button class="btn" data-a="backHole">Cancel</button><button class="btn primary" data-a="saveCard">' + (n < 18 ? 'Save · Hole ' + (n + 1) : 'Finish round') + '</button></div>';
+      '</div><div class="footbar"><button class="btn" data-a="backHole">Cancel</button><button class="btn primary" data-a="saveCard">' + 'Save' + '</button></div>';
   }
   function saveCard() {
     var r = cur(), c = ui.card, h = r.holes[ui.holeIdx];
@@ -555,6 +608,14 @@
       '<button class="tgl' + (tourOn() ? ' on' : '') + '" data-a="tour" id="tourtgl"' + (tourLocked() ? ' disabled' : '') + '><span class="dot"></span>Tournament Mode ' + (tourOn() ? 'on' : 'off') + '</button>' +
       '<p class="muted">Use Tournament Mode to turn off features not allowed during competition: plays-like distances, club and aim advice, and wind, lie or firmness calculations. GPS distance, the forecast wind and scoring stay on.</p>' +
       (tourLocked() ? '<p class="warn" id="tourlock">Locked on for the round in progress. Finish or discard that round to turn it off.</p>' : '') +
+      '<h2>Map</h2>' +
+      '<div class="seg imgseg"><button data-a="imagery" data-v="standard" class="' + ((S.settings.imagery || 'standard') === 'standard' ? 'on' : '') + '">Standard</button>' +
+      '<button data-a="imagery" data-v="clarity" class="' + (S.settings.imagery === 'clarity' ? 'on' : '') + '">Clarity</button></div>' +
+      '<p class="muted">Two free Esri satellite images. Clarity is often sharper but can be older. Keep whichever looks better at your course.</p>' +
+      (function () { var cd = courseData(); return '<p class="muted" id="coursestat">Course map: ' + (cd ? esc(cd.name) + ', ' + cd.holes.length + ' holes, OpenStreetMap data from ' + esc(String(cd.fetched || '').slice(0, 10)) : 'none') + '.</p>'; })() +
+      '<button class="btn small" data-a="refreshCourse" id="refreshbtn">' + (ui.courseBusy ? 'Downloading course map\u2026' : 'Refresh course map') + '</button>' +
+      (ui.courseMsg ? '<p class="' + (ui.courseOk ? 'muted' : 'warn') + '" id="coursemsg">' + esc(ui.courseMsg) + '</p>' : '') +
+      '<p class="muted">Map data \u00a9 OpenStreetMap contributors.</p>' +
       '<h2>Player</h2>' +
       '<label class="namefield">Your name<input type="text" maxlength="40" autocomplete="name" data-set="name" placeholder="e.g. Alex" value="' + esc(S.settings.name || '') + '"></label>' +
       '<p class="muted">Shown on the Home screen, on each new round and in backup file names. Each person uses Caddy4Me on their own phone with their own bag and handicap.</p>' +
@@ -633,6 +694,34 @@
     if (S.currentRoundId === id) S.currentRoundId = null;
     save();
   }
+  function analysisHtml() {
+    if (tourLocked()) return '<div class="anal"><h2>Last 5 rounds</h2><p class="muted" id="analhidden">Available after your tournament round.</p></div>';
+    var input = S.rounds.map(function (r) { return { id: r.id, date: r.date, tournament: r.tournament, holes: holesWithPoints(r) }; });
+    var a = E.analyseRounds(input, 5);
+    if (!a.enough) return '<div class="anal"><h2>Last 5 rounds</h2><p class="muted">Finish ' + (2 - a.count) + ' more 18-hole round' + (a.count === 1 ? '' : 's') + ' to see your trends and suggestions.</p></div>';
+    var A = a.avg, maxPts = Math.max.apply(null, a.rounds.map(function (r) { return r.pts; }).concat([36]));
+    function pc(v) { return v == null ? '\u2013' : v + '%'; }
+    var bars = a.rounds.map(function (r) {
+      return '<div class="bar5"><span class="v">' + r.pts + '</span><span class="b" style="height:' + Math.max(6, Math.round(64 * r.pts / maxPts)) + 'px"></span>' +
+        '<span class="d">' + esc(r.date.slice(8, 10) + '/' + r.date.slice(5, 7)) + (r.tournament ? '<i>T</i>' : '') + '</span></div>';
+    }).join('');
+    var tr = a.trend.pts, trTxt = tr > 0 ? '\u2191 ' + tr + ' pts on your average' : tr < 0 ? '\u2193 ' + Math.abs(tr) + ' pts on your average' : 'level with your average';
+    function row(k, v) { return '<tr><td>' + k + '</td><td><b>' + v + '</b></td></tr>'; }
+    var stats = '<table class="anstats">' + row('Stableford', A.pts + ' pts') + row('Gross', A.gross + ' (' + (A.toPar > 0 ? '+' : '') + A.toPar + ')') +
+      row('Putts', A.putts + ' \u00b7 ' + A.three + ' three-putts') + row('Putts per GIR', A.ppg != null ? A.ppg : '\u2013') +
+      row('Greens in regulation', pc(A.girPct)) + row('Fairways', pc(A.fwPct)) + row('Up &amp; down', pc(A.udPct)) +
+      row('Sand saves', A.sandAtt ? pc(A.sandPct) : '\u2013') + row('Penalties', A.pen) + row('Wasted shots', A.wasted) + '</table>';
+    var g9 = GRID.map(function (g) { return '<div class="gcell' + (g[0] === 'hit' ? ' hitc' : '') + '"><span>' + g[1] + '</span><b>' + A.miss[g[0]] + '</b></div>'; }).join('');
+    var sug = a.suggestions.length ? a.suggestions.map(function (x, i) {
+      return '<div class="sug"><div class="n">' + (i + 1) + '</div><div><b>' + esc(x.title) + '</b><span class="det">' + esc(x.detail) + ' \u00b7 about ' + x.shots + ' shot' + (x.shots === 1 ? '' : 's') + ' a round</span>' +
+        '<span class="tip">' + esc(x.tip) + '</span></div></div>';
+    }).join('') : '<p class="muted">No clear weak spot across these rounds \u2013 keep doing what you\u2019re doing.</p>';
+    return '<div class="anal" id="anal"><h2>Last ' + a.count + ' rounds</h2>' +
+      '<div class="card bars"><div class="bhead"><span>STABLEFORD</span><span>' + esc(trTxt) + '</span></div><div class="row5">' + bars + '</div></div>' +
+      '<h3 class="anh">Averages per round</h3>' + stats +
+      '<h3 class="anh">Where your approaches finished</h3><div class="sumgrid">' + g9 + '</div>' +
+      '<h3 class="anh">Suggested improvements</h3>' + sug + '</div>';
+  }
   function pastHtml() {
     var list = S.rounds.slice().reverse().map(function (r) {
       var s = E.roundSummary(r.holes);
@@ -640,7 +729,7 @@
         (s.holes ? s.score + ' (' + signed(s.toPar) + ') over ' + s.holes + ' holes' : 'not started') + '</button>';
     }).join('');
     return '<div class="bar"><div class="nav"><button class="arrow" data-a="home" aria-label="Home">⌂</button><div class="title">Past rounds</div><span style="width:56px"></span></div></div>' +
-      '<div class="pad">' + (list || '<p class="sub">No rounds yet.</p>') +
+      '<div class="pad">' + analysisHtml() + '<h2>Rounds</h2>' + (list || '<p class="sub">No rounds yet.</p>') +
       '<h2>Import scores</h2><p class="muted">Load a Caddy4Me scores file (e.g. from your MiScore card). It updates strokes, putts and Stableford points for that date and keeps the other stats you entered.</p>' +
       '<p class="warn" id="impmsg">' + esc(ui.importMsg || '') + '</p>' +
       '<label class="btn small primary filebtn">Choose scores file<input type="file" id="impfile" accept=".json,application/json" hidden></label></div>';
@@ -765,7 +854,7 @@
     nextHole: function () { changeHole(1); },
     zin: function () { if (map) map.zoomBy(1); },
     zout: function () { if (map) map.zoomBy(-1); },
-    recenter: function () { if (map && ui.me) map.setView(ui.me); },
+    recenter: function () { if (map && holeData()) applyHoleView(); else if (map && ui.me) map.setView(ui.me); },
     mode: function (v) { if (tourOn()) return; ui.mode = v; if (ui.mode === 'tee') ui.lie = 'fairway'; updateHole(); },
     lie: function (v) { if (tourOn()) return; ui.lie = v; updateHole(); },
     ground: function (v) { cur().ground = v; save(); updateHole(); },
@@ -808,6 +897,24 @@
       autoCard(); rerenderCard();
     },
     noop: function () {},
+    imagery: function (v) { S.settings.imagery = v === 'clarity' ? 'clarity' : 'standard'; save(); render(); },
+    refreshCourse: function () {
+      if (ui.courseBusy) return;
+      ui.courseBusy = true; ui.courseMsg = ''; render();
+      var cd = courseData(), name = (cd && cd.name ? cd.name.replace(/ Golf (Course|Club)$/i, '') : 'Melville Glades').replace(/[^A-Za-z0-9 ]/g, '');
+      fetch('https://overpass-api.de/api/interpreter', { method: 'POST', headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+        body: 'data=' + encodeURIComponent(CC.OVERPASS_QUERY(name)) })
+        .then(function (r) { if (!r.ok) throw new Error('busy (' + r.status + ')'); return r.json(); })
+        .then(function (j) {
+          var c = CC.buildCourse(j, { fetched: j.osm3s && j.osm3s.timestamp_osm_base });
+          var ok = c.holes.filter(function (h) { return h.green; }).length;
+          if (c.holes.length < 9 || ok < c.holes.length) throw new Error('the downloaded map was incomplete (' + c.holes.length + ' holes), so the current one was kept');
+          S.courseMap = c; save();
+          ui.courseOk = true; ui.courseMsg = 'Course map updated: ' + c.holes.length + ' holes.';
+        })
+        .catch(function (e) { ui.courseOk = false; ui.courseMsg = 'Couldn\u2019t refresh the course map: ' + (e.message || 'no signal') + '. Try again later.'; })
+        .then(function () { ui.courseBusy = false; if (ui.screen === 'settings') render(); });
+    },
     tour: function () {
       if (tourLocked()) return;                       // locked on until the round ends
       S.settings.tournament = !S.settings.tournament;
@@ -867,7 +974,7 @@
       if (!hadController || reloaded) return; reloaded = true; window.location.reload();
     });
   }
-  window.__c4m = { S: S, ui: ui };
+  window.__c4m = { S: S, ui: ui, map: function () { return map; } };   // used by the automated tests
 
   /* ---------- passcode lock ----------
    * Keeps casual visitors out. Not strong security: the code is public.

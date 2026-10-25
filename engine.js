@@ -296,9 +296,71 @@
     return s;
   }
 
+  /* ---------- last 5 rounds analysis (v0.5) ----------
+   * rounds: [{ id, date, tournament, holes (with points) }]
+   * Counts finished 18-hole rounds only; needs at least 2. Fixed rules, no AI.
+   */
+  var MISS_SHORT = ['short', 'shortLeft', 'shortRight'], MISS_LEFT = ['left', 'longLeft', 'shortLeft'], MISS_RIGHT = ['right', 'longRight', 'shortRight'];
+  function analyseRounds(rounds, n) {
+    n = n || 5;
+    var done = (rounds || []).filter(function (r) { return r.holes && r.holes.length >= 18 && r.holes.slice(0, 18).every(function (h) { return h.score != null; }); })
+      .sort(function (a, b) { return (a.date + a.id) < (b.date + b.id) ? 1 : -1; }).slice(0, n).reverse();   // oldest -> newest
+    var res = { count: done.length, enough: done.length >= 2, rounds: [], avg: null, suggestions: [] };
+    if (!res.enough) return res;
+    var T = { pts: 0, gross: 0, toPar: 0, putts: 0, three: 0, gir: 0, girPutts: 0, stat: 0, fw: 0, fwHit: 0, ud: 0, udMade: 0, sa: 0, ss: 0, pen: 0, wst: 0, miss: {} };
+    APPROACH9.forEach(function (k) { T.miss[k] = 0; });
+    done.forEach(function (r) {
+      var s = roundSummary(r.holes);
+      var three = r.holes.filter(function (h) { return !h.pickup && (h.putts || 0) >= 3; }).length;
+      res.rounds.push({ id: r.id, date: r.date, tournament: !!r.tournament, pts: s.points, gross: s.score, toPar: s.toPar, putts: s.putts, three: three,
+        girPct: s.girPct, fwPct: s.fwPct, udPct: s.udPct });
+      T.pts += s.points; T.gross += s.score; T.toPar += s.toPar; T.putts += s.putts; T.three += three; T.gir += s.gir; T.girPutts += s.girPutts; T.stat += s.statHoles;
+      T.fw += s.fw; T.fwHit += s.fwHit; T.ud += s.ud; T.udMade += s.udMade; T.sa += s.sandAtt; T.ss += s.sandSaved; T.pen += s.penalties; T.wst += s.wasted;
+      APPROACH9.forEach(function (k) { T.miss[k] += s.miss[k]; });
+    });
+    var N = done.length;
+    function pct(a, b) { return b ? Math.round(100 * a / b) : null; }
+    function one(x) { return Math.round(x * 10) / 10; }
+    var misses = APPROACH9.filter(function (k) { return k !== 'hit'; }).reduce(function (a, k) { return a + T.miss[k]; }, 0);
+    function share(keys) { return misses ? keys.reduce(function (a, k) { return a + T.miss[k]; }, 0) / misses : 0; }
+    var A = res.avg = {
+      pts: one(T.pts / N), gross: one(T.gross / N), toPar: one(T.toPar / N), putts: one(T.putts / N), three: one(T.three / N),
+      ppg: T.gir ? Math.round(100 * T.girPutts / T.gir) / 100 : null, girPct: pct(T.gir, T.stat), fwPct: pct(T.fwHit, T.fw), udPct: pct(T.udMade, T.ud),
+      sandPct: pct(T.ss, T.sa), sandAtt: T.sa, pen: one(T.pen / N), wasted: one(T.wst / N), miss: T.miss, misses: misses,
+      shortShare: Math.round(100 * share(MISS_SHORT)), leftShare: Math.round(100 * share(MISS_LEFT)), rightShare: Math.round(100 * share(MISS_RIGHT))
+    };
+    // trend: last round vs the average of the earlier ones
+    var last = res.rounds[N - 1], earlier = res.rounds.slice(0, -1);
+    res.trend = { pts: one(last.pts - earlier.reduce(function (a, r) { return a + r.pts; }, 0) / earlier.length) };
+    var S = [];
+    function add(key, est, title, detail, tip) { if (est > 0) S.push({ key: key, shots: Math.round(est * 10) / 10, title: title, detail: detail, tip: tip }); }
+    if (A.three >= 2) add('threeputt', A.three - 1, 'Three-putts', A.three + ' three-putts a round',
+      'Lag putting: practise 10–15 m putts to finish within a club length.');
+    if (A.ppg != null && A.ppg > 2.1) add('ppg', (A.ppg - 2) * (T.gir / N), 'Putting after hitting greens', A.ppg + ' putts per green in regulation',
+      'Speed control: 10 minutes on the practice green before each round.');
+    if (misses >= 5 && A.shortShare >= 40) add('short', (share(MISS_SHORT) - 0.25) * (misses / N) * 0.5 + 0.1, 'Approaches finishing short', A.shortShare + '% of missed greens are short',
+      'Take one more club into greens, and check your carry numbers in My Bag.');
+    var side = A.leftShare >= A.rightShare ? 'left' : 'right', sideShare = Math.max(A.leftShare, A.rightShare);
+    if (misses >= 5 && sideShare >= 40) add('side', (sideShare / 100) * (misses / N) * 0.4, 'Approaches missing ' + side, sideShare + '% of missed greens finish ' + side,
+      'Alignment and aim: check your set-up with an alignment stick.');
+    if (T.fw >= 10 && A.fwPct < 40) add('fairway', (0.5 - A.fwPct / 100) * (T.fw / N) * 0.5, 'Fairways', A.fwPct + '% of fairways hit',
+      'Choose a tee club you can keep in play on tight holes.');
+    if (T.ud >= 5 && A.udPct < 25) add('updown', (0.35 - A.udPct / 100) * (T.ud / N), 'Up and down', A.udPct + '% up and down',
+      'Chipping practice: get the ball on the green and within 2 m.');
+    if (T.sa >= 3 && A.sandPct < 20) add('sand', (0.3 - A.sandPct / 100) * (T.sa / N), 'Sand saves', A.sandPct + '% sand saves',
+      'Greenside bunker practice: splash out onto the green first time.');
+    if (A.pen >= 2) add('penalty', A.pen - 1, 'Penalty shots', A.pen + ' penalty shots a round',
+      'Course management: aim away from trouble and take the penalty-free side.');
+    if (A.wasted >= 4) add('wasted', A.wasted - 2, 'Wasted shots', A.wasted + ' wasted shots a round',
+      'Pre-shot routine and tempo to cut duffs and chips that don’t reach the green.');
+    S.sort(function (a, b) { return b.shots - a.shots; });
+    res.suggestions = S.slice(0, 3);
+    return res;
+  }
+
   var api = {
     K: K, LIES: LIES, DEFAULT_BAG: DEFAULT_BAG, COURSE: COURSE, APPROACH9: APPROACH9, clone: clone,
-    dailyHandicap: dailyHandicap, mergeScores: mergeScores, strokesOnHole: strokesOnHole, stablefordPoints: stablefordPoints, normApproach: normApproach,
+    dailyHandicap: dailyHandicap, mergeScores: mergeScores, analyseRounds: analyseRounds, strokesOnHole: strokesOnHole, stablefordPoints: stablefordPoints, normApproach: normApproach,
     distanceM: distanceM, bearingDeg: bearingDeg,
     windFromLive: windFromLive, windFromRelative: windFromRelative, windLabel: windLabel,
     recommend: recommend, swingWord: swingWord,

@@ -332,3 +332,44 @@ button.card { width: 100%; text-align: left; color: inherit; font: inherit; disp
 .trio.one { grid-template-columns: 1fr; }
 .tournote { margin: 12px 4px; padding: 12px 14px; border: 1px solid #FFB547; border-radius: 14px; color: var(--soft2); font-size: 14px; }
 .herocard .tag.hometour { left: auto; right: 14px; top: 14px; }
+
+/* v0.5 hole view: title + GPS, green numbers, bunkers */
+.holehead { display: flex; flex-direction: column; align-items: center; gap: 6px; margin: 4px 0 2px; }
+.holehead .hn { font-family: var(--serif); font-size: 24px; font-weight: 700; }
+.holehead .hn span { font-family: var(--sans); font-size: 13px; font-weight: 700; letter-spacing: .12em; color: var(--muted); }
+.greenbox { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 6px; margin: 8px 0; }
+.greenbox > div { display: flex; flex-direction: column; align-items: center; padding: 8px 4px; border: 1px solid var(--line); border-radius: 14px; background: var(--card); }
+.greenbox .k { font-size: 10.5px; font-weight: 900; letter-spacing: .14em; text-transform: uppercase; color: var(--muted); }
+.greenbox b { font-size: 26px; font-weight: 900; line-height: 1.1; }
+.greenbox .mid { border-color: var(--accent); }
+.greenbox .mid b { color: var(--accent); }
+.greenbox .pinc b { color: #FF7A6B; }
+.greenbox .pinc.unset b { color: var(--muted); }
+.greenbox .s { font-size: 10.5px; color: var(--muted); }
+.bunkerbox { display: flex; flex-direction: column; gap: 4px; margin: 0 0 8px; }
+.bunkerbox .bk { display: flex; justify-content: space-between; align-items: center; gap: 8px; padding: 7px 12px; border-radius: 12px; background: var(--card); border: 1px solid var(--line); font-size: 14px; color: var(--soft2); }
+.bunkerbox .bk .k { font-size: 11px; font-weight: 900; letter-spacing: .12em; text-transform: uppercase; color: #FFE7B0; flex: 1; }
+.bunkerbox .bk b { color: var(--ink); font-size: 17px; }
+.imgseg { display: inline-flex; margin: 4px 0; }
+
+/* v0.5 last 5 rounds */
+.anal h2 { margin-top: 8px; }
+.anal .anh { font-size: 12px; font-weight: 800; letter-spacing: .14em; text-transform: uppercase; color: var(--muted); margin: 18px 4px 8px; }
+.anal .bars { padding: 14px; border-radius: 18px; background: var(--card); border: 1px solid var(--line); }
+.anal .bhead { display: flex; justify-content: space-between; font-size: 11px; font-weight: 800; letter-spacing: .1em; color: var(--muted); margin-bottom: 10px; }
+.anal .bhead span:last-child { color: var(--accent); letter-spacing: .02em; }
+.anal .row5 { display: flex; align-items: flex-end; justify-content: space-around; gap: 8px; height: 110px; }
+.bar5 { display: flex; flex-direction: column; align-items: center; gap: 4px; flex: 1; }
+.bar5 .v { font-size: 15px; font-weight: 900; }
+.bar5 .b { width: 70%; max-width: 34px; border-radius: 8px 8px 3px 3px; background: var(--accent); }
+.bar5:not(:last-child) .b { background: rgba(166,243,106,.45); }
+.bar5 .d { font-size: 11px; color: var(--muted); }
+.bar5 .d i { font-style: normal; margin-left: 3px; color: #FFB547; font-weight: 900; }
+.anstats { width: 100%; border-collapse: collapse; font-size: 15px; }
+.anstats td { padding: 8px 4px; border-bottom: 1px solid var(--line); text-align: left; }
+.anstats td:last-child { text-align: right; }
+.sug { display: flex; gap: 12px; padding: 12px; margin: 8px 0; border-radius: 16px; background: var(--card); border: 1px solid var(--line); }
+.sug .n { flex: none; width: 28px; height: 28px; border-radius: 50%; background: var(--accent); color: var(--accent-ink); font-weight: 900; display: flex; align-items: center; justify-content: center; }
+.sug b { display: block; font-size: 16px; }
+.sug .det { display: block; font-size: 13px; color: var(--muted); margin: 2px 0 6px; }
+.sug .tip { display: block; font-size: 15px; color: var(--soft2); }

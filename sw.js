@@ -1,8 +1,8 @@
 /* Caddy4Me service worker: offline app shell + cached map tiles */
-var SHELL = 'c4m-shell-v4'; // bump this on every release so phones drop the old copy
+var SHELL = 'c4m-shell-v5'; // bump this on every release so phones drop the old copy
 var FONTS = 'c4m-fonts-v1';
 var TILES = 'c4m-tiles-v1';
-var FILES = ['./', 'index.html', 'styles.css', 'engine.js', 'map.js', 'app.js', 'manifest.webmanifest', 'icons/icon-192.png', 'icons/icon-512.png',
+var FILES = ['./', 'index.html', 'styles.css', 'engine.js', 'course.js', 'course-melville.js', 'map.js', 'app.js', 'manifest.webmanifest', 'icons/icon-192.png', 'icons/icon-512.png',
   'images/amen-corner.jpg', 'images/bunker.jpg', 'images/fairway.jpg', 'images/golf-ball.jpg'];
 
 self.addEventListener('install', function (e) {
@@ -26,7 +26,7 @@ self.addEventListener('fetch', function (e) {
     }));
     return;
   }
-  if (url.hostname === 'server.arcgisonline.com') {
+  if (url.hostname === 'server.arcgisonline.com' || url.hostname === 'clarity.maptiles.arcgis.com') {
     // map tiles: cache first, keep what has been seen
     e.respondWith(caches.open(TILES).then(function (c) {
       return c.match(e.request).then(function (hit) {
