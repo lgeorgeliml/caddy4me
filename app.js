@@ -1,7 +1,8 @@
-/* Caddy4Me app v0.1 - screens, GPS, wind, storage */
+/* Caddy4Me app - screens, GPS, wind, storage, course strategy (v0.6) */
 (function () {
   'use strict';
-  var E = window.C4M;
+  var E = window.C4M, ST = window.C4MStrategy, VER = window.C4M_VERSION || { v: '?', date: '' };
+  var BOOK_URL = 'https://claude.ai/artifact/GvSFtLYd1LGYVnKH3GgLRe';   // the published yardage book
   var KEY = 'caddy4me.v1';
   var WIND_MAX_AGE = 10 * 60 * 1000;
   var NEW_SHOT_M = 30;
@@ -24,7 +25,7 @@
       settings: { windSource: 'live', manual: { rel: 0, speed: 0 } },
       course: { name: 'Melville Glades', pars: [null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null] },
       rounds: [], currentRoundId: null, wind: null,
-      prep: { thoughts: [], videos: [] } };
+      prep: { thoughts: [], videos: [] }, holeNotes: [] };
   }
   function load() {
     try {
@@ -144,6 +145,7 @@
     else if (s === 'summary') app.innerHTML = summaryHtml();
     else if (s === 'past') app.innerHTML = pastHtml();
     else if (s === 'bag') app.innerHTML = bagHtml();
+    else if (s === 'strategy') app.innerHTML = strategyHtml();
     else if (s === 'prep') app.innerHTML = prepHtml();
     else if (s === 'settings') app.innerHTML = settingsHtml();
   }
@@ -190,15 +192,18 @@
       (ui.pendingRestore ? '<div class="banner">This replaces everything on this phone with the backup (' + ui.pendingRestore.rounds.length + ' rounds). ' +
         '<button class="btn small danger" data-a="doRestore">Restore now</button><button class="btn small" data-a="cancelRestore">Cancel</button></div>'
         : '<label class="row-btn filebtn"><span class="badge">' + ic('save') + '</span><span class="t"><b>Restore backup</b><span>Load a saved copy onto this phone</span></span>' + ic('right') +
-          '<input type="file" id="restorefile" accept=".json,application/json" hidden></label>') + '</div>' +
+          '<input type="file" id="restorefile" hidden></label>') + '</div>' +
       (ui.restoreMsg ? '<p class="warn">' + esc(ui.restoreMsg) + '</p>' : '') +
       '<p class="note">Club advice from a device isn’t allowed in competition (Rule 4.3). Use Tournament Mode to turn off features not allowed during competition.</p></div>';
   }
   function firstOpenHole(r) { for (var i = 0; i < 18; i++) if (r.holes[i].score == null) return i; return 17; }
-  function newRound() {
+  function newRound(mode) {
+    mode = MODE_KEYS.indexOf(mode) >= 0 ? mode : stratMode();
     var holes = [];
     for (var i = 0; i < 18; i++) holes.push({ n: i + 1, par: S.course.pars[i], si: S.course.si[i], score: null, putts: null, approach: null, upDown: null, sand: 0, penalties: 0, wasted: 0 });
     var r = { id: new Date().toISOString(), date: today(), ground: 'normal', holes: holes, done: false, dailyHcp: currentDH(), player: playerName() || null, tournament: !!S.settings.tournament };
+    // v0.6: the course strategy is fixed for the round when it starts (no plays-like heights in Tournament Mode)
+    r.strategy = compactPlan(buildPlan(mode, r.tournament));
     S.rounds.push(r); S.currentRoundId = r.id; save();
     ui.holeIdx = 0; freshHoleUi(ui); go('hole');
   }
@@ -215,6 +220,7 @@
       '<button class="ibtn" data-a="nextHole" aria-label="Next hole">' + ic('right') + '</button></div></div>' +
       '<div class="holehead"><span class="hn" id="hn"></span>' +
       '<span class="tag line gpstag" id="gpstag"><span class="dotl"></span><span id="gpstxt">GPS</span></span></div>' +
+      '<button class="planstrip" data-a="plan" id="planstrip" hidden></button>' +
       '<button class="bigdist" data-a="manualDist" id="dist" aria-label="Distance – tap to type one"></button>' +
       '<div class="greenbox" id="greenbox" hidden></div><div class="bunkerbox" id="bunkerbox" hidden></div>' +
       (T ? '<div class="trio one"><div class="stat" id="windchip" aria-label="Forecast wind"></div></div>'
@@ -399,6 +405,9 @@
     $('gpstag').classList.toggle('bad', !ui.me || ui.acc > 10);
 
     $('hn').innerHTML = 'Hole ' + (ui.holeIdx + 1) + ' <span>· PAR ' + holePar(r, ui.holeIdx) + ' · SI ' + holeSI(r, ui.holeIdx) + '</span>';
+    var rp = roundPlan(r, ui.holeIdx), ps = $('planstrip');
+    ps.hidden = !(rp && rp.h);
+    if (rp && rp.h) ps.innerHTML = '<span class="k">PLAN</span><span class="t">' + esc(rp.h.strip) + '</span>' + ic('right');
     var d = $('dist');
     var SRC = { entered: 'entered · tap to change', pin: 'to the pin · tap to type', middle: 'to middle of green · tap to type' };
     if (g.D) d.innerHTML = '<span class="num"><b>' + Math.round(g.D) + '</b><i>M</i></span><span class="src">' +
@@ -495,6 +504,107 @@
       return c;
     });
   }
+
+  /* ---------- course strategy (v0.6) ---------- */
+  var MODE_KEYS = ['bogey', 'points', 'attack'];
+  var MODE_INFO = {
+    bogey: ['Smart Bogey Golf', 'Par or bogey on every hole: stay away from trouble, lay up to your wedge, aim for the middle.'],
+    points: ['Stableford Points', 'Protect 2 points on every hole using your handicap shots. Take a risk only when it pays.'],
+    attack: ['Attacking', 'Driver where it fits, go for greens and par 5s in two, aim at the flag.']
+  };
+  function stratMode() { return MODE_KEYS.indexOf(S.settings.strategyMode) >= 0 ? S.settings.strategyMode : 'bogey'; }
+  // finished and imported rounds feed the plan; the round being played does not
+  function historyRounds() {
+    return S.rounds.filter(function (r) { return !(r.id === S.currentRoundId && !r.done); })
+      .map(function (r) { return { id: r.id, date: r.date, dailyHcp: roundDH(r), holes: holesWithPoints(r) }; })
+      .filter(function (r) { return r.holes.some(function (h) { return h.score != null; }); });
+  }
+  function buildPlan(mode, noElevation) {
+    if (!ST || !window.C4M_BOOK) return null;
+    return ST.buildStrategy({ book: window.C4M_BOOK, bag: S.bag, mode: mode, dailyHcp: currentDH(), pars: S.course.pars, si: S.course.si,
+      rounds: historyRounds(), strokesOnHole: E.strokesOnHole, thoughts: S.prep.thoughts, noElevation: !!noElevation });
+  }
+  function compactPlan(p) {
+    if (!p) return null;
+    return { mode: p.mode, modeLabel: p.modeLabel, at: today(), noElevation: p.noElevation, holes: p.holes.map(function (h) {
+      return { n: h.n, strip: h.strip, targetText: h.targetText, shots: h.shots.map(function (x) { return x.text; }), missText: h.missText, green: h.green, cue: h.cue, danger: h.danger };
+    }) };
+  }
+  // the plan saved when the round started; a round started before v0.6 gets today's plan once
+  function roundPlan(r, idx) {
+    if (!r) return null;
+    if (!r.strategy || !r.strategy.holes) { r.strategy = compactPlan(buildPlan(stratMode(), r.tournament)); if (r.strategy) save(); }
+    return r.strategy ? { mode: r.strategy.modeLabel, h: r.strategy.holes[idx] } : null;
+  }
+  // "Updated" date: moves whenever the bag, the rounds, the handicap or the swing thoughts change
+  function strategyMeta() {
+    var rounds = historyRounds().length;
+    var sig = (ST ? ST.bagSignature(S.bag) : '') + '#' + rounds + '#' + currentDH() + '#' + S.prep.thoughts.join('|');
+    var m = S.strategyMeta;
+    if (!m || m.sig !== sig) { S.strategyMeta = { sig: sig, at: today(), rounds: rounds }; save(); }
+    return S.strategyMeta;
+  }
+  function shortDate(iso) { var d = new Date(iso + 'T12:00:00'); return d.getDate() + ' ' + MONTHS[d.getMonth()].charAt(0) + MONTHS[d.getMonth()].slice(1).toLowerCase(); }
+  function holeNote(n) { return (S.holeNotes && S.holeNotes[n - 1]) || ''; }
+  function bookHole(n) { return window.C4M_BOOK ? window.C4M_BOOK.holes[n - 1] : null; }
+  function shotList(shots) { return '<ol class="shots">' + shots.map(function (t) { return '<li>' + esc(t) + '</li>'; }).join('') + '</ol>'; }
+  function dangerList(d) { return d && d.length ? '<ul class="danger">' + d.map(function (t) { return '<li>' + esc(t) + '</li>'; }).join('') + '</ul>' : ''; }
+
+  function startModal() {
+    var m = ui.startMode || stratMode();
+    openModal('<h2>Start round</h2><p class="muted">How do you want to play today? Each hole’s plan is set now and stays the same for the whole round.</p>' +
+      '<div class="modepick">' + MODE_KEYS.map(function (k) {
+        return '<button class="modeopt' + (k === m ? ' on' : '') + '" data-a="pickMode" data-v="' + k + '"><b>' + MODE_INFO[k][0] + '</b><span>' + MODE_INFO[k][1] + '</span></button>';
+      }).join('') + '</div>' +
+      (S.settings.tournament ? '<p class="muted">Tournament Mode is on: the plan is shown without plays-like (uphill / downhill) distances.</p>' : '') +
+      '<button class="btn primary" data-a="startRound" id="startbtn">Start round' + ic('play') + '</button>' +
+      '<button class="btn small" data-a="closeModal">Cancel</button>');
+  }
+  function planModal() {
+    var r = cur(), rp = roundPlan(r, ui.holeIdx); if (!rp || !rp.h) return;
+    var h = rp.h, note = holeNote(h.n);
+    openModal('<div class="plan" id="planmodal"><div class="pk">HOLE ' + h.n + ' · ' + esc(String(rp.mode).toUpperCase()) + '</div><h2>How to play it</h2>' +
+      '<p class="ptarget">' + esc(h.targetText) + '</p>' + shotList(h.shots) +
+      '<p class="pmiss">' + esc(h.missText) + '</p>' +
+      (h.green ? '<p class="pgreen"><b>Green:</b> ' + esc(h.green) + '</p>' : '') +
+      '<div class="cue">' + esc(h.cue) + '</div>' +
+      (h.danger && h.danger.length ? '<div class="label">Watch out</div>' + dangerList(h.danger) : '') +
+      (note ? '<div class="label">My notes</div><div class="mynote" id="plannote">' + esc(note) + '</div>' : '') +
+      '<button class="btn primary" data-a="closeModal">Got it</button></div>');
+  }
+  function strategyHtml() {
+    var mode = stratMode(), p = buildPlan(mode, false), meta = strategyMeta();
+    var seg = MODE_KEYS.map(function (k) { return '<button data-a="stratMode" data-v="' + k + '" class="' + (k === mode ? 'on' : '') + '">' + MODE_INFO[k][0].replace('Smart ', '').replace('Stableford ', '') + '</button>'; }).join('');
+    var cards = p ? p.holes.map(function (h) {
+      var b = bookHole(h.n) || {};
+      return '<div class="scard" id="sh-' + h.n + '"><div class="shead"><b>Hole ' + h.n + '</b><span>Par ' + h.par + ' · ' + h.m + ' m · SI ' + h.si + '</span></div>' +
+        '<div class="sstrip">' + esc(h.strip) + '</div><div class="starget">' + esc(h.targetText) + '</div>' +
+        shotList(h.shots.map(function (x) { return x.text; })) +
+        '<p class="pmiss">' + esc(h.missText) + '</p>' + (h.green ? '<p class="pgreen"><b>Green:</b> ' + esc(h.green) + '</p>' : '') +
+        '<div class="cue">' + esc(h.cue) + '</div>' +
+        '<details><summary>Trouble, club tip and your history</summary>' + dangerList(h.danger) +
+        (h.why.length ? '<p class="muted">' + h.why.map(esc).join('<br>') + '</p>' : '') +
+        '<p class="muted">' + esc(h.history) + '</p>' +
+        (b.tip ? '<p class="tipline">' + esc(b.tip) + '</p>' : '') +
+        (b.video ? '<p class="muted"><a href="' + esc(b.video) + '" target="_blank" rel="noopener">Flyover video</a> · <a href="' + esc(b.page) + '" target="_blank" rel="noopener">Club hole page</a></p>' : '') +
+        '</details>' +
+        '<label class="notes">My notes<textarea data-note="' + h.n + '" maxlength="600" rows="2" placeholder="e.g. Pin usually back left; putts break more than they look">' + esc(holeNote(h.n)) + '</textarea></label></div>';
+    }).join('') : '<p class="warn">Add at least one club to My Bag to build the strategy.</p>';
+    return '<div class="bar"><div class="nav"><button class="arrow" data-a="bag" aria-label="Back to My Bag">‹</button><div class="title">Course strategy</div><span style="width:56px"></span></div></div>' +
+      '<div class="pad strat"><h2>Melville Glades · Members tees</h2>' +
+      '<p class="muted">Your default way to play. You can change it when you start a round.</p>' +
+      '<div class="seg solid modeseg">' + seg + '</div><p class="muted">' + esc(MODE_INFO[mode][1]) + '</p>' +
+      '<p class="muted" id="stratmeta">Updated ' + esc(shortDate(meta.at)) + ' from your bag (' + S.bag.length + ' clubs) and ' + meta.rounds + ' round' + (meta.rounds === 1 ? '' : 's') + '. It rebuilds by itself when you change a club; your notes stay as they are.</p>' +
+      '<a class="btn small" href="' + BOOK_URL + '" target="_blank" rel="noopener">Open the yardage book</a>' + cards +
+      '<p class="muted">Distances from the Members tee to the middle of the green. Tips and green notes from the club’s course tour; bunkers from OpenStreetMap; heights approximate.</p></div>';
+  }
+  app.addEventListener('input', function (e) {
+    var t = e.target; if (!t.dataset || !t.dataset.note) return;
+    S.holeNotes = S.holeNotes || [];
+    while (S.holeNotes.length < 18) S.holeNotes.push('');
+    S.holeNotes[+t.dataset.note - 1] = t.value.slice(0, 600);
+    save();
+  });
 
   /* ---------- hole card (v0.2, MiScore-style layout) ---------- */
   var GRID = [['longLeft', '↖'], ['long', '↑'], ['longRight', '↗'], ['left', '←'], ['hit', '✓'], ['right', '→'], ['shortLeft', '↙'], ['short', '↓'], ['shortRight', '↘']];
@@ -628,7 +738,8 @@
       '<div class="muted">(GA × slope ÷ 113 + (scratch − par ' + coursePar() + ')) × 0.93. Fixed for a round when it starts.</div></div>' +
       '<h2>Melville Glades holes</h2>' + (siOk ? '' : '<p class="warn">Stroke indexes must be 1–18, each used once.</p>') +
       '<table class="settab"><thead><tr><th>Hole</th><th>Par</th><th>Stroke index</th></tr></thead><tbody>' + rows + '</tbody></table>' +
-      '<p class="muted">Blue Men tees, from your MiScore card (18 Oct 2026).</p></div>';
+      '<p class="muted">Blue Men tees, from your MiScore card (18 Oct 2026).</p>' +
+      '<p class="ver" id="appver">Caddy4Me v' + esc(VER.v) + (VER.date ? ' \u00b7 ' + esc(VER.date) : '') + '</p></div>';
   }
   app.addEventListener('change', function (e) {
     var t = e.target; if (!t.dataset || !t.dataset.set) return;
@@ -732,16 +843,16 @@
       '<div class="pad">' + analysisHtml() + '<h2>Rounds</h2>' + (list || '<p class="sub">No rounds yet.</p>') +
       '<h2>Import scores</h2><p class="muted">Load a Caddy4Me scores file (e.g. from your MiScore card). It updates strokes, putts and Stableford points for that date and keeps the other stats you entered.</p>' +
       '<p class="warn" id="impmsg">' + esc(ui.importMsg || '') + '</p>' +
-      '<label class="btn small primary filebtn">Choose scores file<input type="file" id="impfile" accept=".json,application/json" hidden></label></div>';
+      '<label class="btn small primary filebtn">Choose scores file<input type="file" id="impfile" hidden></label></div>';
   }
   function importScores(file) {
     var rd = new FileReader();
     rd.onload = function () {
       var f;
-      try { f = JSON.parse(rd.result); } catch (e) { ui.importMsg = 'That file isn\u2019t a scores file.'; render(); return; }
+      try { f = JSON.parse(rd.result); } catch (e) { ui.importMsg = 'That isn\u2019t a Caddy4Me scores file. Choose the .json scores file.'; render(); return; }
       if (!f || f.type !== 'caddy4me-scores' || !/^\d{4}-\d{2}-\d{2}$/.test(f.date || '') || !Array.isArray(f.holes) ||
           !f.holes.every(function (h) { return h && h.n >= 1 && h.n <= 18 && h.par >= 3 && h.par <= 6 && (h.score == null || (h.score >= 1 && h.score <= 20)); })) {
-        ui.importMsg = 'That file isn\u2019t a valid Caddy4Me scores file.'; render(); return;
+        ui.importMsg = 'That isn\u2019t a Caddy4Me scores file. Choose the .json scores file.'; render(); return;
       }
       var r = S.rounds.filter(function (x) { return x.date === f.date; })[0];
       var created = false;
@@ -764,7 +875,7 @@
     app.insertBefore(b, app.firstChild.nextSibling);
     setTimeout(function () { b.remove(); }, 6000);
   }
-  app.addEventListener('change', function (e) { if (e.target.id === 'impfile' && e.target.files[0]) importScores(e.target.files[0]); });
+  app.addEventListener('change', function (e) { if (e.target.id === 'impfile' && e.target.files[0]) { importScores(e.target.files[0]); e.target.value = ''; } });
   app.addEventListener('change', function (e) {
     if (e.target.id !== 'restorefile' || !e.target.files[0]) return;
     var rd = new FileReader();
@@ -772,33 +883,51 @@
       var b = null;
       try { b = JSON.parse(rd.result); } catch (err) { b = null; }
       if (!b || b.version !== 1 || !Array.isArray(b.rounds) || !Array.isArray(b.bag) || !b.course) {
-        ui.restoreMsg = 'That file isn\u2019t a Caddy4Me backup.'; ui.pendingRestore = null;
+        ui.restoreMsg = 'That isn\u2019t a Caddy4Me backup file. Choose the caddy4me-backup .json file.'; ui.pendingRestore = null;
       } else { ui.restoreMsg = ''; ui.pendingRestore = b; }
       render();
     };
-    rd.readAsText(e.target.files[0]);
+    rd.readAsText(e.target.files[0]); e.target.value = '';
   });
 
   /* ---------- bag ---------- */
   function bagHtml() {
     var rows = S.bag.map(function (c, i) {
-      var p = c.partials ? '<label>¾ carry<input type="number" inputmode="numeric" data-bag="' + i + ':p34" value="' + c.partials['3/4'] + '"></label>' +
-                           '<label>½ carry<input type="number" inputmode="numeric" data-bag="' + i + ':p12" value="' + c.partials['1/2'] + '"></label>' : '';
-      return '<div class="bagrow"><div class="club">' + esc(c.name) + '</div><div class="nums">' +
+      var p = c.partials ? '<label>¾ carry<input type="number" inputmode="numeric" data-bag="' + i + ':p34" value="' + (c.partials['3/4'] || '') + '"></label>' +
+                           '<label>½ carry<input type="number" inputmode="numeric" data-bag="' + i + ':p12" value="' + (c.partials['1/2'] || '') + '"></label>' : '';
+      var del = S.bag.length > 1 ? '<button class="chip delclub' + (ui.confirmDelClub === i ? ' sure' : '') + '" data-a="delClub" data-v="' + i + '" aria-label="Remove ' + esc(c.name) + '">' +
+        (ui.confirmDelClub === i ? 'Tap again to remove' : '\u2715') + '</button>' : '';
+      return '<div class="bagrow"><div class="clubhead"><div class="club">' + esc(c.name) + '</div>' + del + '</div><div class="nums">' +
         '<label>Carry m<input type="number" inputmode="numeric" data-bag="' + i + ':carry" value="' + c.carry + '"></label>' +
         '<label>Total m<input type="number" inputmode="numeric" data-bag="' + i + ':total" value="' + c.total + '"></label>' + p + '</div></div>';
     }).join('');
+    var meta = strategyMeta();
     return '<div class="bar"><div class="nav"><button class="arrow" data-a="home" aria-label="Home">⌂</button><div class="title">My Bag</div><span style="width:56px"></span></div></div>' +
-      '<div class="pad"><p class="sub">Your average distances in metres. Changes save straight away.</p>' + rows +
+      '<div class="pad">' +
+      '<button class="row-btn stratrow" data-a="strategy"><span class="badge">' + ic('flag') + '</span><span class="t"><b>Course strategy \u2013 Melville Glades</b>' +
+      '<span>' + MODE_INFO[stratMode()][0] + ' \u00b7 updated ' + esc(shortDate(meta.at)) + '</span></span>' + ic('right') + '</button>' +
+      '<p class="sub">Your average distances in metres. Changes save straight away and the course strategy rebuilds itself.</p>' + rows +
+      '<div class="addclub"><h2>Add a club</h2>' +
+      '<input id="ncName" class="textin" maxlength="24" placeholder="Club name, e.g. 4 Hybrid or 56° Wedge" aria-label="Club name">' +
+      '<div class="bagrow"><div class="nums"><label>Carry m<input id="ncCarry" type="number" inputmode="numeric"></label><label>Total m<input id="ncTotal" type="number" inputmode="numeric"></label>' +
+      '<label>¾ carry<input id="ncP34" type="number" inputmode="numeric" placeholder="opt."></label><label>½ carry<input id="ncP12" type="number" inputmode="numeric" placeholder="opt."></label></div></div>' +
+      '<p class="warn" id="ncmsg">' + esc(ui.clubMsg || '') + '</p><button class="btn small" data-a="addClub">Add club</button></div>' +
       '<button class="btn small" data-a="resetBag">' + (ui.confirmReset ? 'Tap again to reset all distances' : 'Reset to default distances') + '</button></div>';
   }
+  function guessType(name) {
+    if (/driver|wood|^\d+w$/i.test(name)) return 'wood';
+    if (/hybrid|rescue|^\d+h$/i.test(name)) return 'hybrid';
+    if (/wedge|^(pw|gw|aw|sw|lw|uw)$|\d+\s*°/i.test(name)) return 'wedge';
+    return 'iron';
+  }
+  function sortBag() { S.bag.sort(function (a, b) { return b.total - a.total || b.carry - a.carry; }); }
   app.addEventListener('change', function (e) {
     var t = e.target; if (!t.dataset || !t.dataset.bag) return;
     var parts = t.dataset.bag.split(':'), c = S.bag[+parts[0]], v = Math.round(Number(t.value));
     if (!(v > 0 && v < 400)) { t.value = ''; return; }
     if (parts[1] === 'carry') c.carry = v; else if (parts[1] === 'total') c.total = v;
     else if (parts[1] === 'p34') c.partials['3/4'] = v; else if (parts[1] === 'p12') c.partials['1/2'] = v;
-    save();
+    save(); strategyMeta();
   });
 
   /* ---------- before your round ---------- */
@@ -843,9 +972,32 @@
   /* ---------- actions ---------- */
   var A = {
     home: function () { go('home'); },
-    newRound: newRound,
+    newRound: function () { ui.startMode = stratMode(); startModal(); },
     resume: function () { var r = cur(); if (!r) return; ui.holeIdx = firstOpenHole(r); freshHoleUi(ui); go('hole'); },
-    bag: function () { go('bag'); },
+    bag: function () { ui.confirmDelClub = null; ui.clubMsg = ''; go('bag'); },
+    strategy: function () { go('strategy'); },
+    stratMode: function (v) { if (MODE_KEYS.indexOf(v) < 0) return; S.settings.strategyMode = v; save(); var y = window.scrollY; render(); window.scrollTo(0, y); },
+    plan: planModal,
+    pickMode: function (v) { ui.startMode = v; startModal(); },
+    startRound: function () { var m = ui.startMode || stratMode(); closeModal(); newRound(m); },
+    addClub: function () {
+      var name = $('ncName').value.trim().slice(0, 24), carry = Math.round(+$('ncCarry').value), total = Math.round(+$('ncTotal').value);
+      var p34 = Math.round(+$('ncP34').value), p12 = Math.round(+$('ncP12').value);
+      var fail = !name ? 'Give the club a name.' : !(carry > 0 && carry < 400) ? 'Enter a carry distance in metres.' :
+        !(total >= carry && total < 400) ? 'Total must be at least the carry.' :
+        S.bag.some(function (c) { return c.name.toLowerCase() === name.toLowerCase(); }) ? 'You already have a club called ' + name + '.' : '';
+      if (fail) { ui.clubMsg = fail; $('ncmsg').textContent = fail; return; }
+      var c = { id: 'c' + Date.now().toString(36), name: name, type: guessType(name), carry: carry, total: total };
+      if (p34 > 0 || p12 > 0) c.partials = { '3/4': p34 > 0 ? p34 : Math.round(carry * 0.82), '1/2': p12 > 0 ? p12 : Math.round(carry * 0.64) };
+      S.bag.push(c); sortBag(); save(); strategyMeta();
+      ui.clubMsg = ''; render(); alertBanner(name + ' added \u2013 course strategy updated');
+    },
+    delClub: function (v) {
+      var i = +v; if (!S.bag[i] || S.bag.length <= 1) return;
+      if (ui.confirmDelClub !== i) { ui.confirmDelClub = i; render(); return; }
+      var name = S.bag[i].name; S.bag.splice(i, 1); ui.confirmDelClub = null; save(); strategyMeta(); render();
+      alertBanner(name + ' removed \u2013 course strategy updated');
+    },
     past: function () { go('past'); },
     export: exportBackup,
     openRound: function (v) { ui.summaryId = v; go('summary'); },
@@ -955,7 +1107,7 @@
     },
     resetBag: function () {
       if (!ui.confirmReset) { ui.confirmReset = true; render(); return; }
-      S.bag = E.clone(E.DEFAULT_BAG); save(); ui.confirmReset = false; render();
+      S.bag = E.clone(E.DEFAULT_BAG); save(); strategyMeta(); ui.confirmReset = false; render();
     }
   };
   function rerenderCard() { var y = window.scrollY; render(); window.scrollTo(0, y); }
