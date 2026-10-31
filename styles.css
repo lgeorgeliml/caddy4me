@@ -416,3 +416,23 @@ ul.danger { margin: 4px 0 8px; padding-left: 20px; color: var(--soft2); font-siz
 .addclub { margin-top: 18px; padding-top: 6px; border-top: 1px solid var(--line); }
 .addclub .bagrow { border-bottom: none; padding-top: 0; }
 .ver { margin-top: 22px; font-size: 13px; color: var(--muted); text-align: center; letter-spacing: .04em; }
+
+/* ---------- v0.7 first putt length, Home last-5 card ---------- */
+.fputt { margin-top: 10px; }
+.fputt .chips { display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: 6px; margin-top: 6px; }
+.fputt .chip { min-width: 0; padding: 6px 2px; font-size: 13px; white-space: nowrap; font-variant-numeric: tabular-nums; }
+.putttab { width: 100%; }
+.putttab th { font-size: 11px; font-weight: 800; letter-spacing: .08em; text-transform: uppercase; color: var(--muted); text-align: right; padding: 6px 4px; }
+.putttab th:first-child, .putttab td:first-child { text-align: left; }
+.putttab td { text-align: right; font-variant-numeric: tabular-nums; }
+.h5 { display: flex; flex-direction: column; gap: 10px; width: 100%; padding: 14px; margin: 4px 0 10px; border-radius: 20px; border: 1px solid var(--line); background: var(--card); color: var(--ink); text-align: left; }
+.h5 .card.bars { padding: 0; border: none; background: transparent; }
+.h5head { display: flex; justify-content: space-between; align-items: center; font-size: 12px; font-weight: 800; letter-spacing: .14em; color: var(--muted); }
+.h5head .more { display: inline-flex; align-items: center; gap: 4px; color: var(--accent); letter-spacing: .04em; font-size: 13px; }
+.h5head .ico { width: 16px; height: 16px; }
+.h5 > .muted { margin: 0; }
+.knums { display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: 6px; }
+.kn { display: flex; flex-direction: column; align-items: center; gap: 2px; padding: 8px 2px; border-radius: 12px; background: var(--card2); }
+.kn .k { font-size: 10px; font-weight: 800; letter-spacing: .08em; text-transform: uppercase; color: var(--muted); }
+.kn b { font-size: 18px; font-variant-numeric: tabular-nums; }
+.h5 .sug { margin: 0; background: var(--card2); }

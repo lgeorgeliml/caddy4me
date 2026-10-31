@@ -51,6 +51,10 @@
     oldSi: [13, 14, 3, 7, 16, 5, 8, 11, 9, 2, 12, 1, 15, 17, 4, 6, 18, 10], // v0.2 Offcourse values, replaced
     slope: 124, scratch: 72
   };
+  // v0.7: first putt length on greens hit in regulation
+  var PUTT_BANDS = [['0-3', '0\u20133 m'], ['3-6', '3\u20136 m'], ['6-10', '6\u201310 m'], ['10-20', '10\u201320 m'], ['20+', '20 m+']];
+  function puttTable() { var t = {}; PUTT_BANDS.forEach(function (b) { t[b[0]] = { n: 0, putts: 0, one: 0, three: 0 }; }); return t; }
+  function addPuttTable(into, from) { PUTT_BANDS.forEach(function (b) { var k = b[0]; ['n', 'putts', 'one', 'three'].forEach(function (f) { into[k][f] += from[k][f]; }); }); return into; }
   var APPROACH9 = ['longLeft', 'long', 'longRight', 'left', 'hit', 'right', 'shortLeft', 'short', 'shortRight'];
 
   function clone(o) { return JSON.parse(JSON.stringify(o)); }
@@ -267,7 +271,7 @@
               sandAtt: 0, sandSaved: 0, wasted: 0, penalties: 0, sandShots: 0,
               fw: 0, fwHit: 0, chipIns: 0, points: 0, pointsHoles: 0, miss: {} };
     APPROACH9.forEach(function (k) { s.miss[k] = 0; });
-    s.statHoles = 0; s.pickups = 0;
+    s.statHoles = 0; s.pickups = 0; s.putting = puttTable();
     (holes || []).forEach(function (h) {
       if (h && h.pickup && h.score != null) { // picked up: counts for score + points only
         s.holes++; s.pickups++; s.score += h.score; s.par += h.par; s.putts += h.putts || 0;
@@ -276,7 +280,11 @@
       }
       var st = holeStats(h); if (!st) return;
       s.holes++; s.statHoles++; s.score += h.score; s.par += h.par; s.putts += h.putts || 0;
-      if (st.gir) { s.gir++; s.girPutts += h.putts || 0; }
+      if (st.gir) {
+        s.gir++; s.girPutts += h.putts || 0;
+        var pb = h.firstPutt && s.putting[h.firstPutt];
+        if (pb && h.putts != null) { pb.n++; pb.putts += h.putts; if (h.putts <= 1) pb.one++; if (h.putts >= 3) pb.three++; }
+      }
       if (st.upDownAttempt) { s.ud++; if (st.upDownMade) s.udMade++; }
       if (st.sandSaveAttempt) { s.sandAtt++; if (st.sandSaved) s.sandSaved++; }
       s.wasted += h.wasted || 0; s.penalties += h.penalties || 0; s.sandShots += h.sand || 0;
@@ -307,7 +315,7 @@
       .sort(function (a, b) { return (a.date + a.id) < (b.date + b.id) ? 1 : -1; }).slice(0, n).reverse();   // oldest -> newest
     var res = { count: done.length, enough: done.length >= 2, rounds: [], avg: null, suggestions: [] };
     if (!res.enough) return res;
-    var T = { pts: 0, gross: 0, toPar: 0, putts: 0, three: 0, gir: 0, girPutts: 0, stat: 0, fw: 0, fwHit: 0, ud: 0, udMade: 0, sa: 0, ss: 0, pen: 0, wst: 0, miss: {} };
+    var T = { pts: 0, gross: 0, toPar: 0, putts: 0, three: 0, gir: 0, girPutts: 0, stat: 0, fw: 0, fwHit: 0, ud: 0, udMade: 0, sa: 0, ss: 0, pen: 0, wst: 0, miss: {}, putting: puttTable() };
     APPROACH9.forEach(function (k) { T.miss[k] = 0; });
     done.forEach(function (r) {
       var s = roundSummary(r.holes);
@@ -317,6 +325,7 @@
       T.pts += s.points; T.gross += s.score; T.toPar += s.toPar; T.putts += s.putts; T.three += three; T.gir += s.gir; T.girPutts += s.girPutts; T.stat += s.statHoles;
       T.fw += s.fw; T.fwHit += s.fwHit; T.ud += s.ud; T.udMade += s.udMade; T.sa += s.sandAtt; T.ss += s.sandSaved; T.pen += s.penalties; T.wst += s.wasted;
       APPROACH9.forEach(function (k) { T.miss[k] += s.miss[k]; });
+      addPuttTable(T.putting, s.putting);
     });
     var N = done.length;
     function pct(a, b) { return b ? Math.round(100 * a / b) : null; }
@@ -327,6 +336,7 @@
       pts: one(T.pts / N), gross: one(T.gross / N), toPar: one(T.toPar / N), putts: one(T.putts / N), three: one(T.three / N),
       ppg: T.gir ? Math.round(100 * T.girPutts / T.gir) / 100 : null, girPct: pct(T.gir, T.stat), fwPct: pct(T.fwHit, T.fw), udPct: pct(T.udMade, T.ud),
       sandPct: pct(T.ss, T.sa), sandAtt: T.sa, pen: one(T.pen / N), wasted: one(T.wst / N), miss: T.miss, misses: misses,
+      putting: T.putting,
       shortShare: Math.round(100 * share(MISS_SHORT)), leftShare: Math.round(100 * share(MISS_LEFT)), rightShare: Math.round(100 * share(MISS_RIGHT))
     };
     // trend: last round vs the average of the earlier ones
@@ -336,6 +346,13 @@
     function add(key, est, title, detail, tip) { if (est > 0) S.push({ key: key, shots: Math.round(est * 10) / 10, title: title, detail: detail, tip: tip }); }
     if (A.three >= 2) add('threeputt', A.three - 1, 'Three-putts', A.three + ' three-putts a round',
       'Lag putting: practise 10–15 m putts to finish within a club length.');
+    // v0.7 putting-by-distance rules (greens hit with a first-putt length recorded)
+    var P = T.putting, long = { n: P['10-20'].n + P['20+'].n, three: P['10-20'].three + P['20+'].three };
+    if (long.n >= 3 && long.three / long.n >= 1 / 3) add('lag', long.three / N, 'Lag putting', long.three + ' three-putts from ' + long.n + ' first putts of 10 m or more',
+      'Lag drill: from 10, 15 and 20 m, roll every putt to stop within a club length of the hole.');
+    var sh = P['0-3'];
+    if (sh.n >= 4 && sh.one / sh.n < 0.85) add('shortputt', (0.85 - sh.one / sh.n) * (sh.n / N) + 0.1, 'Short putts', Math.round(100 * sh.one / sh.n) + '% holed from 0\u20133 m (' + sh.one + ' of ' + sh.n + ')',
+      'Gate drill: 20 straight putts from 1 m and 2 m before each round.');
     if (A.ppg != null && A.ppg > 2.1) add('ppg', (A.ppg - 2) * (T.gir / N), 'Putting after hitting greens', A.ppg + ' putts per green in regulation',
       'Speed control: 10 minutes on the practice green before each round.');
     if (misses >= 5 && A.shortShare >= 40) add('short', (share(MISS_SHORT) - 0.25) * (misses / N) * 0.5 + 0.1, 'Approaches finishing short', A.shortShare + '% of missed greens are short',
@@ -359,7 +376,7 @@
   }
 
   var api = {
-    K: K, LIES: LIES, DEFAULT_BAG: DEFAULT_BAG, COURSE: COURSE, APPROACH9: APPROACH9, clone: clone,
+    K: K, LIES: LIES, DEFAULT_BAG: DEFAULT_BAG, COURSE: COURSE, APPROACH9: APPROACH9, PUTT_BANDS: PUTT_BANDS, clone: clone,
     dailyHandicap: dailyHandicap, mergeScores: mergeScores, analyseRounds: analyseRounds, strokesOnHole: strokesOnHole, stablefordPoints: stablefordPoints, normApproach: normApproach,
     distanceM: distanceM, bearingDeg: bearingDeg,
     windFromLive: windFromLive, windFromRelative: windFromRelative, windLabel: windLabel,

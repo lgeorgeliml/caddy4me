@@ -156,19 +156,7 @@
     var nextHole = open ? firstOpenHole(r) + 1 : 1;
     var dh = currentDH();
     var weather = S.wind && Date.now() - S.wind.at < 3 * 3600000 ? '<span class="weather">' + ic('wind') + Math.round(S.wind.speed) + ' km/h ' + compass(S.wind.from) + '</span>' : '';
-    // most recent round with scores (not the one in progress)
-    var last = S.rounds.slice().reverse().filter(function (x) { return x !== (open ? r : null) && x.holes.some(function (h) { return h.score != null; }); })[0];
-    var lastCard = '';
-    if (last) {
-      var ls = E.roundSummary(holesWithPoints(last));
-      lastCard = '<button class="card lastround" data-a="openRound" data-v="' + esc(last.id) + '">' +
-        '<div class="top"><span>LAST ROUND</span><span>' + esc(niceDate(last.date)) + '</span></div>' +
-        '<div class="body"><div><div class="kv"><div class="k">Gross</div><div class="v">' + ls.score + ' <small>' + (ls.holes < 18 ? ls.holes + ' holes' : signed(ls.toPar)) + '</small></div></div>' +
-        '<div class="kv"><div class="k">Putts</div><div class="v">' + ls.putts + ' <small>total</small></div></div></div>' +
-        '<div class="ring">' + ring(ls.points, 36) + '<div class="c"><b>' + (ls.pointsHoles ? ls.points : '–') + '</b><span>PTS</span></div></div></div></button>' +
-        '<div class="duo"><div class="mini"><div class="h">' + ic('fairway') + '<span>FAIRWAYS</span></div><div class="v">' + ls.fwHit + '<small>/' + ls.fw + '</small></div></div>' +
-        '<div class="mini"><div class="h">' + ic('flag') + '<span>GREENS</span></div><div class="v">' + ls.gir + '<small>/' + ls.statHoles + '</small></div></div></div>';
-    }
+    var lastCard = home5Html();
     var tp = S.prep.thoughts.length, vp = S.prep.videos.length;
     function rowBtn(a, icon, title, sub) {
       return '<button class="row-btn" data-a="' + a + '"><span class="badge">' + ic(icon) + '</span><span class="t"><b>' + title + '</b><span>' + sub + '</span></span>' + ic('right') + '</button>';
@@ -178,22 +166,16 @@
       '<div class="photo herocard"><img src="' + IMG.amen + '" alt="Stone bridge over the creek to a par-3 green lined with azaleas">' +
       '<span class="over tag lime">MELVILLE GLADES</span>' + (tourOn() ? '<span class="over tag tour hometour">TOURNAMENT MODE</span>' : '') +
       '<div class="over cap"><div class="mood">' + mood() + '</div><div class="info">' + (open ? 'Round in progress · next up hole ' + nextHole : '18 holes · Daily handicap ' + (dh != null ? dh : '–')) + '</div></div></div>' +
-      lastCard +
       rowBtn('prep', 'drop', 'Before your round', (tp ? tp + ' swing thought' + (tp > 1 ? 's' : '') : 'Add swing thoughts') + ' · ' + vp + ' video' + (vp === 1 ? '' : 's')) +
       (open ? '<button class="btn primary" data-a="resume">Resume · Hole ' + nextHole + ic('play') + '</button>' +
               '<button class="btn" data-a="newRound">Start a new round</button>' +
               '<button class="btn small danger" data-a="discard">' + (ui.confirmDiscard ? 'Tap again to discard – nothing is saved' : 'Discard this round') + '</button>'
             : '<button class="btn primary" data-a="newRound">Start round' + ic('play') + '</button>') +
+      lastCard +
       '<div class="list">' +
       rowBtn('past', 'chart', 'Past rounds', S.rounds.length + ' saved · import scores') +
       rowBtn('bag', 'bag', 'My bag', S.bag.length + ' clubs · carry &amp; total') +
-      rowBtn('settings', 'gear', 'Settings', 'Handicap &amp; course') +
-      rowBtn('export', 'save', 'Export backup', 'Save a copy of your bag and rounds') +
-      (ui.pendingRestore ? '<div class="banner">This replaces everything on this phone with the backup (' + ui.pendingRestore.rounds.length + ' rounds). ' +
-        '<button class="btn small danger" data-a="doRestore">Restore now</button><button class="btn small" data-a="cancelRestore">Cancel</button></div>'
-        : '<label class="row-btn filebtn"><span class="badge">' + ic('save') + '</span><span class="t"><b>Restore backup</b><span>Load a saved copy onto this phone</span></span>' + ic('right') +
-          '<input type="file" id="restorefile" hidden></label>') + '</div>' +
-      (ui.restoreMsg ? '<p class="warn">' + esc(ui.restoreMsg) + '</p>' : '') +
+      rowBtn('settings', 'gear', 'Settings', 'Handicap, course &amp; backups') + '</div>' +
       '<p class="note">Club advice from a device isn’t allowed in competition (Rule 4.3). Use Tournament Mode to turn off features not allowed during competition.</p></div>';
   }
   function firstOpenHole(r) { for (var i = 0; i < 18; i++) if (r.holes[i].score == null) return i; return 17; }
@@ -616,7 +598,7 @@
     ui.card = { par: par, si: holeSI(r, idx), score: saved ? h.score : par, putts: saved ? h.putts : 2,
       chipIn: !!h.chipIn, fairway: h.fairway || null, approach: E.normApproach(h.approach) || null,
       upDown: h.upDown, sandSave: h.sandSave != null ? h.sandSave : null, girOverride: saved ? (typeof h.gir === 'boolean' ? h.gir : !!(E.holeStats(h) || {}).gir) : false, // new card: GIR off until tapped
-      sand: h.sand || 0, penalties: h.penalties || 0, wasted: saved ? (h.wasted || 0) : 0,
+      sand: h.sand || 0, penalties: h.penalties || 0, wasted: saved ? (h.wasted || 0) : 0, firstPutt: h.firstPutt || null,
       touched: { approach: saved, upDown: saved, sandSave: saved, wasted: saved } };
     autoCard();
     go('card');
@@ -629,6 +611,7 @@
     c.gir = c.girOverride === true;
     if (c.gir) { c.upDown = null; c.sandSave = null; }
     else {
+      c.firstPutt = null;                     // v0.7: putt length is for greens hit in regulation only
       if (c.upDown == null) c.upDown = false;
       if (c.sandSave == null) c.sandSave = false;
     }
@@ -641,7 +624,7 @@
     var r = cur(), c = ui.card;
     var hs = holesWithPoints(r).map(function (h, i) {
       if (i !== ui.holeIdx) return h;
-      return { par: c.par, score: c.score, putts: c.putts, gir: c.gir, fairway: c.par >= 4 ? c.fairway : null, approach: c.approach,
+      return { par: c.par, score: c.score, putts: c.putts, gir: c.gir, firstPutt: c.firstPutt, fairway: c.par >= 4 ? c.fairway : null, approach: c.approach,
         upDown: c.upDown, sandSave: c.sandSave, sand: c.sand, penalties: c.penalties, wasted: c.wasted, chipIn: c.chipIn, points: c.points };
     });
     return E.roundSummary(hs);
@@ -682,7 +665,10 @@
       cstep('putts', 'Putts', null, null, '<div class="pills">' + toggle('chip', 'Chip In', c.chipIn, true) + '<span class="pill">Total putts: <b>' + T.putts + '</b></span></div>') +
       fw +
       '<div class="sec"><h3>Green in regulation</h3><div class="pills">' + toggle('gir', 'Green hit', c.gir, true) +
-      '<span class="pill">Total: <b>' + T.gir + ' / ' + T.holes + '</b></span></div></div>' +
+      '<span class="pill">Total: <b>' + T.gir + ' / ' + T.holes + '</b></span></div>' +
+      (c.gir ? '<div class="fputt" id="fputt"><div class="hint">First putt length</div><div class="chips">' + E.PUTT_BANDS.map(function (b) {
+        return '<button class="chip' + (c.firstPutt === b[0] ? ' on' : '') + '" data-a="fp" data-v="' + b[0] + '">' + b[1] + '</button>';
+      }).join('') + '</div></div>' : '') + '</div>' +
       '<div class="sec"><h3>Approach shot</h3><div class="grid9">' + grid + '</div>' +
       '<div class="pills">' + toggle('ud', 'Up &amp; Down', c.upDown === true, !c.gir) + toggle('ss', 'Sand Save', c.sandSave === true, !c.gir) + '</div>' +
       '<div class="pills"><span class="pill">U&amp;D <b>' + T.udMade + ' / ' + T.ud + '</b></span><span class="pill">Sand saves <b>' + T.sandSaved + ' / ' + T.sandAtt + '</b></span></div></div>' +
@@ -695,7 +681,7 @@
     var r = cur(), c = ui.card, h = r.holes[ui.holeIdx];
     if (r.dailyHcp == null) r.dailyHcp = currentDH();
     h.par = c.par; h.si = c.si; h.score = c.score; h.putts = c.putts; h.chipIn = c.chipIn; h.gir = c.gir;
-    h.fairway = c.par >= 4 ? c.fairway : null; h.approach = c.approach;
+    h.fairway = c.par >= 4 ? c.fairway : null; h.approach = c.approach; h.firstPutt = c.gir ? (c.firstPutt || null) : null;
     h.upDown = c.gir ? null : c.upDown; h.sandSave = c.sandSave; h.sand = c.sand; h.penalties = c.penalties; h.wasted = c.wasted;
     h.points = c.points;
     r.done = r.holes.every(function (x) { return x.score != null; });
@@ -726,6 +712,14 @@
       '<button class="btn small" data-a="refreshCourse" id="refreshbtn">' + (ui.courseBusy ? 'Downloading course map\u2026' : 'Refresh course map') + '</button>' +
       (ui.courseMsg ? '<p class="' + (ui.courseOk ? 'muted' : 'warn') + '" id="coursemsg">' + esc(ui.courseMsg) + '</p>' : '') +
       '<p class="muted">Map data \u00a9 OpenStreetMap contributors.</p>' +
+      '<h2>Backup</h2>' +
+      '<button class="row-btn" data-a="export" id="exportbtn"><span class="badge">' + ic('save') + '</span><span class="t"><b>Export backup</b><span>Save a copy of your bag, rounds and notes</span></span>' + ic('right') + '</button>' +
+      (ui.pendingRestore ? '<div class="banner" id="restorebanner">This replaces everything on this phone with the backup (' + ui.pendingRestore.rounds.length + ' rounds). ' +
+        '<button class="btn small danger" data-a="doRestore">Restore now</button><button class="btn small" data-a="cancelRestore">Cancel</button></div>'
+        : '<label class="row-btn filebtn" id="restorebtn"><span class="badge">' + ic('save') + '</span><span class="t"><b>Restore backup</b><span>Load a saved copy onto this phone</span></span>' + ic('right') +
+          '<input type="file" id="restorefile" hidden></label>') +
+      (ui.restoreMsg ? '<p class="warn" id="restoremsg">' + esc(ui.restoreMsg) + '</p>' : '') +
+      '<p class="muted">Your data lives only on this phone. Export a backup now and then, and keep it somewhere safe (e.g. Google Drive).</p>' +
       '<h2>Player</h2>' +
       '<label class="namefield">Your name<input type="text" maxlength="40" autocomplete="name" data-set="name" placeholder="e.g. Alex" value="' + esc(S.settings.name || '') + '"></label>' +
       '<p class="muted">Shown on the Home screen, on each new round and in backup file names. Each person uses Caddy4Me on their own phone with their own bag and handicap.</p>' +
@@ -794,6 +788,7 @@
       tile('Penalties', s.penalties, 'shots') +
       '</div>' + pointsChart(hs) +
       '<h2>Approach shots</h2><div class="sumgrid">' + grid + '</div>' +
+      '<h2>Putting from greens hit</h2>' + puttTableHtml(s.putting, 'sumputt') +
       '<h2>Hole by hole</h2><div class="tablebox"><table class="htab"><thead><tr><th>#</th><th>Par</th><th>Sc</th><th>Pts</th><th>Pt</th><th>FW</th><th>GIR</th><th>U&amp;D</th><th>Pen</th><th>Wst</th></tr></thead><tbody>' + rows + '</tbody></table></div>' +
       '<p class="muted">Tap a hole to edit it.</p>' +
       (!r.done && r.id === S.currentRoundId ? '<button class="btn primary" data-a="resume">Back to the round</button>' : '') +
@@ -805,18 +800,48 @@
     if (S.currentRoundId === id) S.currentRoundId = null;
     save();
   }
-  function analysisHtml() {
-    if (tourLocked()) return '<div class="anal"><h2>Last 5 rounds</h2><p class="muted" id="analhidden">Available after your tournament round.</p></div>';
-    var input = S.rounds.map(function (r) { return { id: r.id, date: r.date, tournament: r.tournament, holes: holesWithPoints(r) }; });
-    var a = E.analyseRounds(input, 5);
-    if (!a.enough) return '<div class="anal"><h2>Last 5 rounds</h2><p class="muted">Finish ' + (2 - a.count) + ' more 18-hole round' + (a.count === 1 ? '' : 's') + ' to see your trends and suggestions.</p></div>';
-    var A = a.avg, maxPts = Math.max.apply(null, a.rounds.map(function (r) { return r.pts; }).concat([36]));
-    function pc(v) { return v == null ? '\u2013' : v + '%'; }
+  // v0.7: putting from greens hit, by first-putt length
+  function puttTableHtml(P, id) {
+    var any = E.PUTT_BANDS.some(function (b) { return P[b[0]].n; });
+    if (!any) return '<p class="muted"' + (id ? ' id="' + id + '"' : '') + '>No first-putt lengths yet. When you hit a green in regulation, pick the length on the hole card.</p>';
+    var rows = E.PUTT_BANDS.map(function (b) {
+      var x = P[b[0]];
+      return '<tr><td>' + b[1] + '</td><td>' + (x.n || '\u2013') + '</td><td>' + (x.n ? Math.round(10 * x.putts / x.n) / 10 : '\u2013') + '</td><td>' + (x.n ? x.one : '\u2013') + '</td><td>' + (x.n ? x.three : '\u2013') + '</td></tr>';
+    }).join('');
+    return '<table class="anstats putttab"' + (id ? ' id="' + id + '"' : '') + '><thead><tr><th>First putt</th><th>Greens</th><th>Avg putts</th><th>1-putts</th><th>3-putts</th></tr></thead><tbody>' + rows + '</tbody></table>';
+  }
+  function lastRoundsInput() { return S.rounds.map(function (r) { return { id: r.id, date: r.date, tournament: r.tournament, holes: holesWithPoints(r) }; }); }
+  function barsCard(a) {
+    var maxPts = Math.max.apply(null, a.rounds.map(function (r) { return r.pts; }).concat([36]));
     var bars = a.rounds.map(function (r) {
       return '<div class="bar5"><span class="v">' + r.pts + '</span><span class="b" style="height:' + Math.max(6, Math.round(64 * r.pts / maxPts)) + 'px"></span>' +
         '<span class="d">' + esc(r.date.slice(8, 10) + '/' + r.date.slice(5, 7)) + (r.tournament ? '<i>T</i>' : '') + '</span></div>';
     }).join('');
     var tr = a.trend.pts, trTxt = tr > 0 ? '\u2191 ' + tr + ' pts on your average' : tr < 0 ? '\u2193 ' + Math.abs(tr) + ' pts on your average' : 'level with your average';
+    return '<div class="card bars"><div class="bhead"><span>STABLEFORD</span><span>' + esc(trTxt) + '</span></div><div class="row5">' + bars + '</div></div>';
+  }
+  // v0.7 Home: chart + key numbers + top suggestion; tap for the full panel in Past rounds
+  function home5Html() {
+    var head = '<div class="h5head"><span>LAST 5 ROUNDS</span>';
+    if (tourLocked()) return '<div class="h5 anal" id="home5">' + head + '</div><p class="muted">Available after your tournament round.</p></div>';
+    var a = E.analyseRounds(lastRoundsInput(), 5);
+    if (!a.enough) return '<button class="h5 anal" data-a="past" id="home5">' + head + ic('right') + '</div><p class="muted">Finish ' + (2 - a.count) + ' more 18-hole round' + (a.count === 1 ? '' : 's') +
+      ' to see your trends here. Imported MiScore rounds count.</p></button>';
+    var A = a.avg;
+    function k(label, v) { return '<div class="kn"><span class="k">' + label + '</span><b>' + v + '</b></div>'; }
+    function pc(v) { return v == null ? '\u2013' : v + '%'; }
+    var top = a.suggestions[0];
+    return '<button class="h5 anal" data-a="past" id="home5">' + head + '<span class="more">Details' + ic('right') + '</span></div>' + barsCard(a) +
+      '<div class="knums">' + k('Points', A.pts) + k('Gross', A.gross) + k('Putts', A.putts) + k('Greens', pc(A.girPct)) + k('Fairways', pc(A.fwPct)) + '</div>' +
+      (top ? '<div class="sug"><div class="n">1</div><div><b>' + esc(top.title) + '</b><span class="det">' + esc(top.detail) + '</span></div></div>'
+           : '<p class="muted">No clear weak spot across these rounds. Enter fairways, greens and putts on the hole card for sharper suggestions.</p>') + '</button>';
+  }
+  function analysisHtml() {
+    if (tourLocked()) return '<div class="anal"><h2>Last 5 rounds</h2><p class="muted" id="analhidden">Available after your tournament round.</p></div>';
+    var a = E.analyseRounds(lastRoundsInput(), 5);
+    if (!a.enough) return '<div class="anal"><h2>Last 5 rounds</h2><p class="muted">Finish ' + (2 - a.count) + ' more 18-hole round' + (a.count === 1 ? '' : 's') + ' to see your trends and suggestions.</p></div>';
+    var A = a.avg;
+    function pc(v) { return v == null ? '\u2013' : v + '%'; }
     function row(k, v) { return '<tr><td>' + k + '</td><td><b>' + v + '</b></td></tr>'; }
     var stats = '<table class="anstats">' + row('Stableford', A.pts + ' pts') + row('Gross', A.gross + ' (' + (A.toPar > 0 ? '+' : '') + A.toPar + ')') +
       row('Putts', A.putts + ' \u00b7 ' + A.three + ' three-putts') + row('Putts per GIR', A.ppg != null ? A.ppg : '\u2013') +
@@ -828,8 +853,9 @@
         '<span class="tip">' + esc(x.tip) + '</span></div></div>';
     }).join('') : '<p class="muted">No clear weak spot across these rounds \u2013 keep doing what you\u2019re doing.</p>';
     return '<div class="anal" id="anal"><h2>Last ' + a.count + ' rounds</h2>' +
-      '<div class="card bars"><div class="bhead"><span>STABLEFORD</span><span>' + esc(trTxt) + '</span></div><div class="row5">' + bars + '</div></div>' +
+      barsCard(a) +
       '<h3 class="anh">Averages per round</h3>' + stats +
+      '<h3 class="anh">Putting from greens hit</h3>' + puttTableHtml(A.putting, 'anputt') +
       '<h3 class="anh">Where your approaches finished</h3><div class="sumgrid">' + g9 + '</div>' +
       '<h3 class="anh">Suggested improvements</h3>' + sug + '</div>';
   }
@@ -1040,6 +1066,7 @@
       autoCard(); rerenderCard();
     },
     fw: function (v) { ui.card.fairway = ui.card.fairway === v ? null : v; rerenderCard(); },
+    fp: function (v) { var c = ui.card; if (!c.gir) return; c.firstPutt = c.firstPutt === v ? null : v; rerenderCard(); },
     chip: function () { var c = ui.card, on = !c.chipIn; if (on) c.putts = 0; autoCard(); c.chipIn = on; rerenderCard(); },
     ud: function () { var c = ui.card; if (c.gir) return; c.upDown = !(c.upDown === true); c.touched.upDown = true; autoCard(); rerenderCard(); },
     ss: function () {
