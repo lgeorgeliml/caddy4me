@@ -1,0 +1,191 @@
+{
+ "type": "caddy4me-scores",
+ "version": 1,
+ "source": "MiScore card",
+ "course": "Melville Glades",
+ "tees": "Blue Men",
+ "date": "2026-09-26",
+ "dailyHcp": 18,
+ "holes": [
+  {
+   "n": 1,
+   "par": 4,
+   "score": 7,
+   "putts": 2,
+   "strokesReceived": 1,
+   "points": 0,
+   "pickup": true,
+   "si": 14
+  },
+  {
+   "n": 2,
+   "par": 5,
+   "score": 7,
+   "putts": 3,
+   "strokesReceived": 1,
+   "points": 1,
+   "pickup": false,
+   "si": 6
+  },
+  {
+   "n": 3,
+   "par": 4,
+   "score": 7,
+   "putts": 2,
+   "strokesReceived": 1,
+   "points": 0,
+   "pickup": true,
+   "si": 5
+  },
+  {
+   "n": 4,
+   "par": 4,
+   "score": 4,
+   "putts": 2,
+   "strokesReceived": 1,
+   "points": 3,
+   "pickup": false,
+   "si": 8
+  },
+  {
+   "n": 5,
+   "par": 3,
+   "score": 5,
+   "putts": 3,
+   "strokesReceived": 1,
+   "points": 1,
+   "pickup": false,
+   "si": 18
+  },
+  {
+   "n": 6,
+   "par": 4,
+   "score": 5,
+   "putts": 1,
+   "strokesReceived": 1,
+   "points": 2,
+   "pickup": false,
+   "si": 7
+  },
+  {
+   "n": 7,
+   "par": 4,
+   "score": 4,
+   "putts": 0,
+   "strokesReceived": 1,
+   "points": 3,
+   "pickup": false,
+   "si": 3
+  },
+  {
+   "n": 8,
+   "par": 5,
+   "score": 7,
+   "putts": 2,
+   "strokesReceived": 1,
+   "points": 1,
+   "pickup": false,
+   "si": 10
+  },
+  {
+   "n": 9,
+   "par": 3,
+   "score": 6,
+   "putts": 1,
+   "strokesReceived": 1,
+   "points": 0,
+   "pickup": true,
+   "si": 11
+  },
+  {
+   "n": 10,
+   "par": 4,
+   "score": 6,
+   "putts": 1,
+   "strokesReceived": 1,
+   "points": 1,
+   "pickup": false,
+   "si": 2
+  },
+  {
+   "n": 11,
+   "par": 4,
+   "score": 5,
+   "putts": 1,
+   "strokesReceived": 1,
+   "points": 2,
+   "pickup": false,
+   "si": 13
+  },
+  {
+   "n": 12,
+   "par": 4,
+   "score": 6,
+   "putts": 3,
+   "strokesReceived": 1,
+   "points": 1,
+   "pickup": false,
+   "si": 1
+  },
+  {
+   "n": 13,
+   "par": 5,
+   "score": 5,
+   "putts": 2,
+   "strokesReceived": 1,
+   "points": 3,
+   "pickup": false,
+   "si": 12
+  },
+  {
+   "n": 14,
+   "par": 3,
+   "score": 4,
+   "putts": 2,
+   "strokesReceived": 1,
+   "points": 2,
+   "pickup": false,
+   "si": 16
+  },
+  {
+   "n": 15,
+   "par": 4,
+   "score": 7,
+   "putts": 4,
+   "strokesReceived": 1,
+   "points": 0,
+   "pickup": true,
+   "si": 17
+  },
+  {
+   "n": 16,
+   "par": 4,
+   "score": 4,
+   "putts": 1,
+   "strokesReceived": 1,
+   "points": 3,
+   "pickup": false,
+   "si": 4
+  },
+  {
+   "n": 17,
+   "par": 3,
+   "score": 5,
+   "putts": 2,
+   "strokesReceived": 1,
+   "points": 1,
+   "pickup": false,
+   "si": 15
+  },
+  {
+   "n": 18,
+   "par": 5,
+   "score": 6,
+   "putts": 1,
+   "strokesReceived": 1,
+   "points": 2,
+   "pickup": false,
+   "si": 9
+  }
+ ]
+}

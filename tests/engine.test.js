@@ -74,5 +74,128 @@ t('round summary', () => {
   eq(s.sandAtt, 1); eq(s.sandPct, 0); eq(s.penalties, 1); eq(s.wasted, 1); eq(s.miss.left, 1); eq(s.puttsPerGir, 2);
 });
 
+// --- v0.2: Stableford + new stats
+t('GA 16.9, slope 124, scratch 72: daily handicap = 17', () => eq(E.dailyHandicap(16.9, 124, 72, 72), 17));
+t('daily handicap scratch 0 slope 113 = 0', () => eq(E.dailyHandicap(0, 113, 72, 72), 0));
+t('daily handicap 30.0 slope 124 rating 70 par 72', () => eq(E.dailyHandicap(30, 124, 70, 72), 29)); // (32.92-2)*.93=28.76
+t('DH 17: SI 17 gets a stroke, SI 18 none', () => { eq(E.strokesOnHole(17, 17), 1); eq(E.strokesOnHole(17, 18), 0); });
+t('DH 20: SI 1-2 get 2 strokes', () => { eq(E.strokesOnHole(20, 2), 2); eq(E.strokesOnHole(20, 3), 1); });
+t('DH 0: no strokes', () => eq(E.strokesOnHole(0, 1), 0));
+t('plus 2: SI 17 and 18 give a stroke back', () => { eq(E.strokesOnHole(-2, 17), -1); eq(E.strokesOnHole(-2, 16), 0); });
+t('points: par 4, 1 stroke, score 5 = 2', () => eq(E.stablefordPoints(4, 5, 1), 2));
+t('points: par 4, 1 stroke, score 4 = 3', () => eq(E.stablefordPoints(4, 4, 1), 3));
+t('points: blob = 0, never negative', () => eq(E.stablefordPoints(4, 9, 1), 0));
+t('course data sums to par 72, SI 1-18 unique', () => {
+  eq(E.COURSE.pars.reduce((a, b) => a + b, 0), 72);
+  eq(E.COURSE.si.slice().sort((a, b) => a - b).join(','), Array.from({ length: 18 }, (_, i) => i + 1).join(','));
+});
+t('fairway stats ignore par 3s', () => {
+  const s = E.roundSummary([
+    { par: 4, score: 4, putts: 2, fairway: 'hit', points: 3 },
+    { par: 5, score: 6, putts: 2, fairway: 'left', points: 2 },
+    { par: 3, score: 3, putts: 2, fairway: 'hit', points: 2 }]);
+  eq(s.fw, 2); eq(s.fwHit, 1); eq(s.fwPct, 50); eq(s.points, 7);
+});
+t('explicit sand save toggle', () => {
+  eq(E.holeStats({ par: 4, score: 4, putts: 1, sand: 1, upDown: true, sandSave: false }).sandSaved, false);
+  eq(E.holeStats({ par: 4, score: 4, putts: 1, sand: 1, upDown: true, sandSave: true }).sandSaved, true);
+});
+t('9-way approach + old "green" maps to hit', () => {
+  const s = E.roundSummary([{ par: 4, score: 4, putts: 2, approach: 'green' }, { par: 4, score: 5, putts: 2, approach: 'shortRight' }]);
+  eq(s.miss.hit, 1); eq(s.miss.shortRight, 1);
+});
+t('chip-ins counted', () => eq(E.roundSummary([{ par: 4, score: 4, putts: 0, chipIn: true }]).chipIns, 1));
+
+// --- import scores + pick-ups
+t('pick-up counts for score and points only', () => {
+  const s = E.roundSummary([{ par: 4, score: 4, putts: 2, points: 3 }, { par: 3, score: 6, putts: null, pickup: true, points: 0 }]);
+  eq(s.holes, 2); eq(s.score, 10); eq(s.points, 3); eq(s.statHoles, 1); eq(s.girPct, 100); eq(s.pickups, 1); eq(s.putts, 2);
+});
+t('mergeScores keeps other stats', () => {
+  const r = { holes: Array.from({ length: 18 }, (_, i) => ({ n: i + 1, par: 4, score: i === 0 ? 5 : null, fairway: i === 0 ? 'hit' : null, sand: i === 0 ? 1 : 0 })) };
+  const f = { holes: Array.from({ length: 18 }, (_, i) => ({ n: i + 1, par: 4, score: 4, putts: 2, points: 3, pickup: false })), dailyHcp: 17, source: 'MiScore card' };
+  eq(E.mergeScores(r, f), 18); eq(r.holes[0].score, 4); eq(r.holes[0].fairway, 'hit'); eq(r.holes[0].sand, 1); eq(r.done, true); eq(r.dailyHcp, 17);
+});
+t('real 18 Oct scores file: 33 pts, 92 strokes', () => {
+  const f = require('../../scores/caddy4me-scores-2026-10-18.json');
+  const s = E.roundSummary(f.holes); eq(s.points, 33); eq(s.score, 92); eq(s.pickups, 2); eq(s.putts, 34);
+});
+
+t('Blue Men SI: unique 1-18, hole 5 is SI 18, hole 12 is SI 1', () => {
+  eq(E.COURSE.si.slice().sort((a, b) => a - b).join(','), Array.from({ length: 18 }, (_, i) => i + 1).join(','));
+  eq(E.COURSE.si[4], 18); eq(E.COURSE.si[11], 1);
+});
+t('DH 17 on Blue Men: shot on every hole except 5 (matches MiScore card)', () => {
+  const shots = E.COURSE.si.map(si => E.strokesOnHole(17, si));
+  eq(shots.join(''), '111101111111111111');
+});
+t('18 Oct points recompute from SI = card points', () => {
+  const f = require('../../scores/caddy4me-scores-2026-10-18.json');
+  f.holes.forEach(h => { if (!h.pickup) eq(E.stablefordPoints(h.par, h.score, E.strokesOnHole(17, h.si)), h.points, 'hole ' + h.n); });
+});
+
+// --- v0.5: last 5 rounds analysis
+const mkRound = (id, date, f) => ({ id, date, holes: Array.from({ length: 18 }, (_, i) => Object.assign({ n: i + 1, par: 4, score: 5, putts: 2, points: 2, sand: 0, penalties: 0, wasted: 0 }, f(i))) });
+const good = i => ({ score: 4, putts: 2, points: 3, gir: true, fairway: 'hit', approach: 'hit' });
+const leaky = i => ({ score: 6, putts: i < 3 ? 3 : 2, points: 1, gir: false, fairway: i % 3 ? 'left' : 'hit', approach: i % 2 ? 'short' : 'shortLeft', upDown: false, penalties: i < 3 ? 1 : 0, wasted: i < 3 ? 2 : 0 });
+t('needs 2 finished rounds', () => { const a = E.analyseRounds([mkRound('a', '2026-10-01', good)]); eq(a.enough, false); eq(a.count, 1); });
+t('unfinished rounds ignored', () => {
+  const part = mkRound('p', '2026-10-05', good); part.holes[17].score = null;
+  const a = E.analyseRounds([mkRound('a', '2026-10-01', good), part, mkRound('b', '2026-10-02', good)]); eq(a.count, 2);
+});
+t('only the last 5 finished rounds, oldest first', () => {
+  const rs = ['01', '02', '03', '04', '05', '06', '07'].map(d => mkRound('r' + d, '2026-10-' + d, good));
+  const a = E.analyseRounds(rs); eq(a.count, 5); eq(a.rounds[0].date, '2026-10-03'); eq(a.rounds[4].date, '2026-10-07');
+});
+t('good rounds: averages and no suggestions', () => {
+  const a = E.analyseRounds([mkRound('a', '2026-10-01', good), mkRound('b', '2026-10-02', good)]);
+  eq(a.avg.pts, 54); eq(a.avg.gross, 72); eq(a.avg.girPct, 100); eq(a.avg.fwPct, 100); eq(a.suggestions.length, 0);
+});
+t('leaky rounds: top 3 suggestions ranked by shots', () => {
+  const a = E.analyseRounds([mkRound('a', '2026-10-01', leaky), mkRound('b', '2026-10-02', leaky), mkRound('c', '2026-10-03', leaky)]);
+  eq(a.avg.three, 3); eq(a.avg.pen, 3); eq(a.avg.wasted, 6); eq(a.avg.shortShare, 100); eq(a.avg.udPct, 0);
+  eq(a.suggestions.length, 3);
+  ok(a.suggestions[0].shots >= a.suggestions[1].shots && a.suggestions[1].shots >= a.suggestions[2].shots, 'sorted');
+  ok(a.suggestions.every(s => s.tip && s.detail), 'each has a tip');
+});
+t('trend: last round vs earlier average', () => {
+  const a = E.analyseRounds([mkRound('a', '2026-10-01', leaky), mkRound('b', '2026-10-02', good)]); eq(a.trend.pts, 54 - 18);
+});
+t('pick-ups excluded from 3-putts', () => {
+  const r = mkRound('a', '2026-10-01', i => (i === 0 ? { pickup: true, putts: 3, points: 0 } : good(i)));
+  const a = E.analyseRounds([r, mkRound('b', '2026-10-02', good)]); eq(a.rounds[0].three, 0);
+});
+
+// ---------- v0.7 first putt length ----------
+t('putt bands defined', () => eq(E.PUTT_BANDS.map(b => b[0]).join(','), '0-3,3-6,6-10,10-20,20+'));
+t('round summary: putting table by band, GIR holes only', () => {
+  const hs = [
+    { n: 1, par: 4, score: 4, putts: 2, gir: true, firstPutt: '10-20' },
+    { n: 2, par: 4, score: 5, putts: 3, gir: true, firstPutt: '10-20' },
+    { n: 3, par: 3, score: 2, putts: 1, gir: true, firstPutt: '0-3' },
+    { n: 4, par: 4, score: 5, putts: 1, gir: false, firstPutt: '0-3' },        // not a GIR: ignored
+    { n: 5, par: 4, score: 6, putts: 3, pickup: true, gir: true, firstPutt: '20+' }, // pick-up: ignored
+    { n: 6, par: 4, score: 4, putts: 2, gir: true }                              // no length: ignored
+  ];
+  const s = E.roundSummary(hs);
+  eq(s.putting['10-20'].n, 2); eq(s.putting['10-20'].putts, 5); eq(s.putting['10-20'].three, 1);
+  eq(s.putting['0-3'].n, 1); eq(s.putting['0-3'].one, 1); eq(s.putting['20+'].n, 0);
+});
+const lagR = i => ({ score: 5, putts: i < 4 ? 3 : 2, points: 2, gir: true, firstPutt: i < 6 ? '10-20' : '3-6' });
+t('lag putting suggestion from 10 m+ three-putts', () => {
+  const a = E.analyseRounds([mkRound('a', '2026-10-01', lagR), mkRound('b', '2026-10-02', lagR)]);
+  eq(a.avg.putting['10-20'].n, 12); eq(a.avg.putting['10-20'].three, 8);
+  ok(a.suggestions.some(x => x.key === 'lag'), 'lag suggested');
+});
+t('short putt suggestion below 85% from 0-3 m', () => {
+  const sr = i => ({ score: 4, putts: i < 3 ? 2 : 1, points: 3, gir: true, firstPutt: i < 6 ? '0-3' : null });
+  const a = E.analyseRounds([mkRound('a', '2026-10-01', sr), mkRound('b', '2026-10-02', sr)]);
+  const x = a.suggestions.find(x => x.key === 'shortputt'); ok(x, 'short putts suggested'); ok(/50% holed/.test(x.detail), x && x.detail);
+});
+t('no putting-distance suggestions without lengths', () => {
+  const a = E.analyseRounds([mkRound('a', '2026-10-01', good), mkRound('b', '2026-10-02', good)]);
+  ok(!a.suggestions.some(x => x.key === 'lag' || x.key === 'shortputt'));
+});
+
 console.log(pass + ' passed, ' + fail + ' failed');
 process.exit(fail ? 1 : 0);

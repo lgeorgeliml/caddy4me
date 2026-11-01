@@ -25,6 +25,10 @@ The release number lives in `version.js`: change it on every release and phones 
 - `strategy.js` - course strategy: a plan for every hole from your bag, past rounds and handicap (Smart Bogey Golf, Stableford Points, Attacking)
 - `version.js` - release number for Settings and the offline cache
 - `sw.js`, `manifest.webmanifest`, `icons/` - offline + install
-- `tests/` - run `node tests/engine.test.js`, `node tests/course.test.js`, `node tests/strategy.test.js`
+- `tests/` - unit tests, shared golf cases runner (`tests/golf-cases/`), browser tests (`tests/e2e/`) and test fixtures
+
+## Tests
+GitHub Actions runs every test on each upload (`.github/workflows/test.yml`): unit tests, the shared golf test cases at the version in `golf-cases.version`, and the browser tests. Locally: `npm install`, `npx playwright install chromium`, then `npm test`.
+This web app is the lean prototype (Track A). The Android product lives in the private `caddy4me-android` repo, and both must pass the same shared golf test cases.
 
 Your bag, rounds and hole notes are stored only on your phone. Use Export backup to save a copy.
