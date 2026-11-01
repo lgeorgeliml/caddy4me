@@ -23,6 +23,7 @@ The release number lives in `version.js`: change it on every release and phones 
 - `course.js`, `course-melville.js` - hole layouts from OpenStreetMap (front / middle / back, bunkers)
 - `course-book.js` - Melville Glades yardage book data (Members tee distances, tips, green notes, heights)
 - `strategy.js` - course strategy: a plan for every hole from your bag, past rounds and handicap (Smart Bogey Golf, Stableford Points, Attacking)
+- `rules.js` - rules compliance: which features a rule set allows (social, or competition under Rule 4.3). Tournament Mode uses the competition set
 - `version.js` - release number for Settings and the offline cache
 - `sw.js`, `manifest.webmanifest`, `icons/` - offline + install
 - `tests/` - unit tests, shared golf cases runner (`tests/golf-cases/`), browser tests (`tests/e2e/`) and test fixtures

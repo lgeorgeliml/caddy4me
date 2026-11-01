@@ -13,6 +13,7 @@ const ROOT = path.resolve(__dirname, '..', '..');
 const E = require(path.join(ROOT, 'engine.js'));
 const C = require(path.join(ROOT, 'course.js'));
 const ST = require(path.join(ROOT, 'strategy.js'));
+const RU = require(path.join(ROOT, 'rules.js'));
 
 const DIR = path.resolve(process.argv[2] || path.join(ROOT, 'golf-cases'));
 const load = f => JSON.parse(fs.readFileSync(path.join(DIR, f), 'utf8'));
@@ -48,6 +49,7 @@ const FN = {
   greenFMB: i => { const f = C.greenFMB(i.player, hole(i.course, i.hole)); return { front: r1(f.front), middle: r1(f.middle), back: r1(f.back), inside: f.inside }; },
   bunkersAhead: i => C.bunkersAhead(i.player, hole(i.course, i.hole), i.max).map(x => ({ reach: r1(x.reach), carry: r1(x.carry), nearGreen: x.nearGreen })),
   holeBearing: i => r1(C.holeBearing(hole(i.course, i.hole))),
+  rulesAllows: i => RU.allows(i.ruleSet, i.feature),
   'buildStrategy.hole': i => {
     const key = [i.book, i.bag, i.mode, i.dailyHcp, i.rounds, i.noElevation].join('|');
     if (!stratCache[key]) {

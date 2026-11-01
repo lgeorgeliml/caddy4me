@@ -4,7 +4,7 @@
   "description": "Caddy4Me web prototype (Track A). No build step; these scripts only run the tests.",
   "scripts": {
     "test": "npm run test:unit && npm run test:cases && npm run test:e2e",
-    "test:unit": "node tests/engine.test.js && node tests/course.test.js && node tests/strategy.test.js",
+    "test:unit": "node tests/engine.test.js && node tests/course.test.js && node tests/strategy.test.js && node tests/rules.test.js",
     "test:cases": "node tests/golf-cases/run.js",
     "test:e2e": "node tests/e2e/run.js"
   },

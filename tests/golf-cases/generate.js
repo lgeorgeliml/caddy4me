@@ -16,6 +16,7 @@ const ROOT = path.resolve(__dirname, '..', '..');
 const E = require(path.join(ROOT, 'engine.js'));
 const C = require(path.join(ROOT, 'course.js'));
 const ST = require(path.join(ROOT, 'strategy.js'));
+const RU = require(path.join(ROOT, 'rules.js'));
 const COURSE = require(path.join(ROOT, 'course-melville.js'));
 const BOOK = require(path.join(ROOT, 'course-book.js'));
 const VERSION = (require(path.join(ROOT, 'version.js')) || {}).C4M_VERSION || null;
@@ -202,6 +203,15 @@ function r6(x) { return Math.round(x * 1e6) / 1e6; }
     });
   });
   suite('strategy', 'Course strategy per hole: target, handicap shots, shot plan (kind + club) and safe miss. Wording is not compared.', cases);
+}
+
+/* ---------- rules (1.1.0) ---------- */
+{
+  const cases = [];
+  const sets = ['social', 'competition', 'club-champs-2027', '', 'toString'];      // the last three are unknown -> treated as competition
+  const feats = RU.FEATURES.concat(['aiSwingCoach', 'toString']);                    // unknown features -> never allowed
+  sets.forEach(rs => feats.forEach(f => cases.push({ fn: 'rulesAllows', input: { ruleSet: rs, feature: f }, expected: RU.allows(rs, f) })));
+  suite('rules', 'Which features each rule set allows (Rule 4.3 competition, social). Unknown rule sets are treated as competition; unknown features are never allowed.', cases);
 }
 
 /* ---------- index ---------- */

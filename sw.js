@@ -3,7 +3,7 @@ importScripts('version.js');
 var SHELL = 'c4m-shell-v' + self.C4M_VERSION.v; // the release number in version.js names the cache, so phones drop the old copy
 var FONTS = 'c4m-fonts-v1';
 var TILES = 'c4m-tiles-v1';
-var FILES = ['./', 'index.html', 'styles.css', 'version.js', 'engine.js', 'course.js', 'course-melville.js', 'course-book.js', 'strategy.js', 'map.js', 'app.js', 'manifest.webmanifest', 'icons/icon-192.png', 'icons/icon-512.png',
+var FILES = ['./', 'index.html', 'styles.css', 'version.js', 'engine.js', 'course.js', 'course-melville.js', 'course-book.js', 'rules.js', 'strategy.js', 'map.js', 'app.js', 'manifest.webmanifest', 'icons/icon-192.png', 'icons/icon-512.png',
   'images/amen-corner.jpg', 'images/bunker.jpg', 'images/fairway.jpg', 'images/golf-ball.jpg'];
 
 self.addEventListener('install', function (e) {
