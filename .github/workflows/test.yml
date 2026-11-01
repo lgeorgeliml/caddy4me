@@ -1,0 +1,40 @@
+# Caddy4Me prototype (Track A): runs every test on each upload or pull request.
+# Needs repository secret GOLF_CASES_TOKEN (read-only access to lgeorgeliml/caddy4me-golf-cases).
+name: Tests
+on:
+  push:
+  pull_request:
+  workflow_dispatch:
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Read the pinned golf cases version
+        id: cases
+        run: echo "version=$(tr -d '[:space:]' < golf-cases.version)" >> "$GITHUB_OUTPUT"
+      - name: Check out shared golf test cases v${{ steps.cases.outputs.version }}
+        uses: actions/checkout@v4
+        with:
+          repository: lgeorgeliml/caddy4me-golf-cases
+          ref: v${{ steps.cases.outputs.version }}
+          token: ${{ secrets.GOLF_CASES_TOKEN }}
+          path: golf-cases
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+      - run: npm install --no-audit --no-fund
+      - run: npx playwright install --with-deps chromium
+      - name: Unit tests
+        run: npm run test:unit
+      - name: Shared golf test cases
+        run: npm run test:cases
+      - name: Browser tests
+        run: npm run test:e2e
+      - name: Keep screenshots
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: screenshots
+          path: tests/e2e/shots/
+          if-no-files-found: ignore
