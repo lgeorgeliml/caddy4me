@@ -7,22 +7,22 @@ on:
   workflow_dispatch:
 jobs:
   test:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
       - name: Read the pinned golf cases version
         id: cases
         run: echo "version=$(tr -d '[:space:]' < golf-cases.version)" >> "$GITHUB_OUTPUT"
       - name: Check out shared golf test cases v${{ steps.cases.outputs.version }}
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
         with:
           repository: lgeorgeliml/caddy4me-golf-cases
           ref: v${{ steps.cases.outputs.version }}
           token: ${{ secrets.GOLF_CASES_TOKEN }}
           path: golf-cases
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@v5
         with:
-          node-version: 20
+          node-version: 22
       - run: npm install --no-audit --no-fund
       - run: npx playwright install --with-deps chromium
       - name: Unit tests
@@ -33,7 +33,7 @@ jobs:
         run: npm run test:e2e
       - name: Keep screenshots
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v5
         with:
           name: screenshots
           path: tests/e2e/shots/
