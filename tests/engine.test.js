@@ -117,7 +117,7 @@ t('mergeScores keeps other stats', () => {
   eq(E.mergeScores(r, f), 18); eq(r.holes[0].score, 4); eq(r.holes[0].fairway, 'hit'); eq(r.holes[0].sand, 1); eq(r.done, true); eq(r.dailyHcp, 17);
 });
 t('real 18 Oct scores file: 33 pts, 92 strokes', () => {
-  const f = require('../../scores/caddy4me-scores-2026-10-18.json');
+  const f = require('./fixtures/scores/caddy4me-scores-2026-10-18.json');
   const s = E.roundSummary(f.holes); eq(s.points, 33); eq(s.score, 92); eq(s.pickups, 2); eq(s.putts, 34);
 });
 
@@ -130,7 +130,7 @@ t('DH 17 on Blue Men: shot on every hole except 5 (matches MiScore card)', () =>
   eq(shots.join(''), '111101111111111111');
 });
 t('18 Oct points recompute from SI = card points', () => {
-  const f = require('../../scores/caddy4me-scores-2026-10-18.json');
+  const f = require('./fixtures/scores/caddy4me-scores-2026-10-18.json');
   f.holes.forEach(h => { if (!h.pickup) eq(E.stablefordPoints(h.par, h.score, E.strokesOnHole(17, h.si)), h.points, 'hole ' + h.n); });
 });
 
