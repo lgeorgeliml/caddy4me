@@ -1,4 +1,4 @@
-/* Caddy4Me course strategy v0.6
+/* Caddy4Me course strategy v0.6 (v0.9: bags with no wedge)
  * Builds an 18-hole game plan from the yardage book, My Bag, past rounds and handicap shots.
  * Three modes: 'bogey' (Smart Bogey Golf), 'points' (Stableford Points), 'attack' (Attacking).
  * Pure functions: browser (window.C4MStrategy) and Node (module.exports). No live data is used,
@@ -39,7 +39,8 @@
       return c.name + ':' + c.carry + '/' + c.total + (c.partials ? '/' + (c.partials['3/4'] || '') + '/' + (c.partials['1/2'] || '') : '');
     }).join('|');
   }
-  // the wedge used for lay-ups: the longest-carrying wedge (full swing)
+  // the wedge used for lay-ups: the longest-carrying wedge (full swing).
+  // A bag with no wedge uses its shortest club instead (golf cases 1.2.0).
   function layupWedge(clubs) {
     var w = clubs.filter(function (c) { return c.type === 'wedge'; });
     if (!w.length) w = clubs.slice(-1);
@@ -127,7 +128,8 @@
       if (frontTrouble && h.green) need = Math.max(need, P - h.green.front + 6);
       return clubToCarry(list, need);
     }
-    // wedge shots inside a full wedge: full or partial swing closest to the distance
+    // wedge shots inside a full wedge: full or partial swing closest to the distance.
+    // No wedge in the bag: the lay-up club (the shortest club) with a full swing.
     function wedgeShot(from) {
       var P = from + rise, best = null;
       clubs.filter(function (c) { return c.type === 'wedge'; }).forEach(function (c) {
@@ -137,7 +139,7 @@
           if (!best || d < best.d) best = { d: d, club: c, swing: o[0], carry: o[1] };
         });
       });
-      return best;
+      return best || { d: 0, club: wedge, swing: '', carry: wedge.carry };
     }
 
     /* safe miss (worked out first so lay-ups and approaches can favour that side) */
@@ -207,11 +209,11 @@
         if (safe) why.push(shortName(rc) + ' is a long club for this green, so play to the safe side');
         reached = true; break;
       }
-      if (!lc) lc = rc ? rc : deck[0];                            // out of range: as far as the longest club goes
+      if (!lc) lc = rc ? rc : (deck[0] || clubs[0]);              // out of range: as far as the longest club goes
       if (par === 3) {                                            // par 3 you can't (or shouldn't) reach: stay short of the trouble
         var limit = pos - (h.green ? h.green.front : 12) - 10;
         (h.bunkers || []).forEach(function (b) { if (b.greenside && /front/.test(b.side)) limit = Math.min(limit, pos - b.toGreenFar - cfg.spread); });
-        lc = clubToTotal(clubs, limit, 0) || deck[deck.length - 1];
+        lc = clubToTotal(clubs, limit, 0) || deck[deck.length - 1] || clubs[clubs.length - 1];
       }
       var t2 = bunkerTrouble(h, pos, lc, cfg);
       if (t2) { var shorter = clubToTotal(deck, t2.reach - cfg.spread, 0); if (shorter) lc = shorter; }

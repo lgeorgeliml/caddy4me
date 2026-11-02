@@ -27,7 +27,7 @@ const SCORES = __dirname + '/../fixtures/scores/caddy4me-scores-2026-10-18.json'
 
   // ---- version ----
   await p.click('[data-a="settings"]');
-  check(/Caddy4Me v0\.8 · 1 Nov 2026/.test(await p.textContent('#appver')), 'version shown at the bottom of Settings');
+  check(/Caddy4Me v0\.9 · 2 Nov 2026/.test(await p.textContent('#appver')), 'version shown at the bottom of Settings');
   // ---- defect: file pickers accept any file (v0.7: restore lives in Settings) ----
   check(await p.evaluate(() => !document.getElementById('restorefile').hasAttribute('accept')), 'Restore backup picker has no file-type filter');
   await p.setInputFiles('#restorefile', { name: 'notes.txt', mimeType: 'text/plain', buffer: Buffer.from('hello') });

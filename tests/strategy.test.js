@@ -88,5 +88,16 @@ t('pick-ups count for score only', () => {
 });
 t('swing thoughts reused in cues', () => ok(build({ thoughts: ['Smooth tempo'] }).holes.some(h => /Smooth tempo/.test(h.cue))));
 
+// ---------- v0.9: bags with no wedge (golf cases 1.2.0) ----------
+const noWedge = () => bag().filter(c => c.type !== 'wedge');
+t('no wedge: a plan for all 18 holes in every mode', () => ['bogey', 'points', 'attack'].forEach(m => { const p = build({ bag: noWedge(), mode: m }); eq(p.holes.length, 18); ok(p.holes.every(h => h.reached), m); }));
+t('no wedge: lay-up leaves a full 9 iron, played with a full swing', () => {
+  const h = hole(build({ bag: noWedge() }), 2);
+  ok(/your full 9i \(105 m\)/.test(h.shots[1].text)); eq(h.shots[2].club, '9 Iron'); ok(/^9i to /.test(h.shots[2].text));
+});
+t('no wedge: short approaches never name a partial swing', () => ok(build({ bag: noWedge() }).holes.every(h => h.shots.every(x => !/[\u00be\u00bd]/.test(x.text)))));
+t('one club: every shot is that club', () => ok(build({ bag: bag().filter(c => c.id === '7i') }).holes.every(h => h.shots.every(x => x.club === '7 Iron'))));
+t('driver only: still a plan (no crash)', () => eq(build({ bag: bag().filter(c => c.id === 'D') }).holes.length, 18));
+
 console.log(pass + ' passed, ' + fail + ' failed');
 process.exit(fail ? 1 : 0);

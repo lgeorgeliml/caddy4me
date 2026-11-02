@@ -44,7 +44,10 @@ const BAGS = {
   'default': E.clone(E.DEFAULT_BAG),
   'long-hitter': E.clone(E.DEFAULT_BAG).map(c => c.id === 'D' ? Object.assign(c, { carry: 228, total: 250 }) : c)
     .concat([{ id: 'x3w', name: '3 Wood', type: 'wood', carry: 190, total: 212 }]).sort((a, b) => b.total - a.total),
-  'no-hybrid': E.clone(E.DEFAULT_BAG).filter(c => c.id !== '5H')
+  'no-hybrid': E.clone(E.DEFAULT_BAG).filter(c => c.id !== '5H'),
+  // 1.2.0: bags with no wedge (the lay-up and short shots use the shortest club, full swing)
+  'no-wedge': E.clone(E.DEFAULT_BAG).filter(c => c.type !== 'wedge'),
+  'one-club': E.clone(E.DEFAULT_BAG).filter(c => c.id === '7i')
 };
 write('fixtures/bags.json', BAGS);
 write('fixtures/course-melville-glades.json', COURSE);
@@ -192,8 +195,10 @@ function r6(x) { return Math.round(x * 1e6) / 1e6; }
   const cases = [];
   const roundSets = { none: [], miscore: Object.keys(ROUNDS).filter(k => k.startsWith('miscore')), all: Object.keys(ROUNDS) };
   const configs = [];
-  ['bogey', 'points', 'attack'].forEach(mode => Object.keys(BAGS).forEach(bag => [17, 5].forEach(dh => configs.push({ mode, bag, dh, rounds: 'none', noElevation: false }))));
+  ['bogey', 'points', 'attack'].forEach(mode => ['default', 'long-hitter', 'no-hybrid'].forEach(bag => [17, 5].forEach(dh => configs.push({ mode, bag, dh, rounds: 'none', noElevation: false }))));
   ['bogey', 'points', 'attack'].forEach(mode => configs.push({ mode, bag: 'default', dh: 17, rounds: 'all', noElevation: false }, { mode, bag: 'default', dh: 17, rounds: 'miscore', noElevation: true }));
+  // 1.2.0 (added at the end so earlier case ids stay the same): no wedge in the bag, and a bag of 1 club
+  ['bogey', 'points', 'attack'].forEach(mode => ['no-wedge', 'one-club'].forEach(bag => [17, 5].forEach(dh => configs.push({ mode, bag, dh, rounds: 'none', noElevation: false }))));
   configs.forEach(cfg => {
     const st = ST.buildStrategy({ book: BOOK, bag: BAGS[cfg.bag], mode: cfg.mode, dailyHcp: cfg.dh, pars: E.COURSE.pars, si: E.COURSE.si,
       rounds: roundSets[cfg.rounds].map(k => ROUNDS[k]), strokesOnHole: E.strokesOnHole, dailyHcpFor: r => r.dailyHcp, thoughts: [], noElevation: cfg.noElevation });

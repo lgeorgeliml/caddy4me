@@ -33,7 +33,7 @@ const SC = d => __dirname + '/../fixtures/scores/caddy4me-scores-' + d + '.json'
   check(await p.locator('#exportbtn').count() === 1 && await p.locator('#restorefile').count() === 1, 'Settings has Export and Restore backup');
   const [dl] = await Promise.all([p.waitForEvent('download'), p.click('#exportbtn')]);
   check(/caddy4me-backup-.*\.json/.test(dl.suggestedFilename()), 'Export backup downloads from Settings');
-  check(/Caddy4Me v0\.8 · 1 Nov 2026/.test(await txt('#appver')), 'version v0.8 in Settings');
+  check(/Caddy4Me v0\.9 · 2 Nov 2026/.test(await txt('#appver')), 'version v0.9 in Settings');
   await p.click('[data-a="home"]');
 
   // ---- import the three MiScore rounds ----
