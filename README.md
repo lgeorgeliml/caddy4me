@@ -1,4 +1,4 @@
-# Caddy4Me v0.9
+# Caddy4Me v0.10
 
 Your on-course caddie: club calls from your own distances, live GPS and live wind, plus a hole-by-hole stats card.
 
@@ -22,7 +22,7 @@ The release number lives in `version.js`: change it on every release and phones 
 - `map.js` - satellite map (Esri World Imagery), tap-to-target, rotated hole view
 - `course.js`, `course-melville.js` - hole layouts from OpenStreetMap (front / middle / back, bunkers)
 - `course-book.js` - Melville Glades yardage book data (Members tee distances, tips, green notes, heights)
-- `strategy.js` - course strategy: a plan for every hole from your bag, past rounds and handicap (Smart Bogey Golf, Stableford Points, Attacking)
+- `strategy.js` - course strategy: a plan for every hole from your bag, past rounds and handicap (Smart Bogey Golf, Stableford Points, Attacking). It also works on a map-built book (no aim line, green slope, tips or green notes; golf cases 1.4.0): with no aim line, Points and Attacking aim away from a one-sided fairway bunker instead of clubbing down
 - `rules.js` - rules compliance: which features a rule set allows (social, or competition under Rule 4.3). Tournament Mode uses the competition set
 - `version.js` - release number for Settings and the offline cache
 - `sw.js`, `manifest.webmanifest`, `icons/` - offline + install

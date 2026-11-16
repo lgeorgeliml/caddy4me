@@ -106,6 +106,10 @@
     return hit && land > -10 ? hit : null;
   }
 
+  var OTHER = { left: 'right', right: 'left' };
+  // every fairway bunker on the hole is on this side (none in the centre or on the other side)
+  function oneSided(h, side) { return fairwayBunkers(h).every(function (b) { return b.side === side; }); }
+
   /* ---------- one hole ---------- */
   function planHole(h, ctx) {
     var cfg = MODES[ctx.mode] || MODES.bogey, mode = ctx.mode in MODES ? ctx.mode : 'bogey';
@@ -161,21 +165,24 @@
     /* tee shot (par 4/5) */
     var pos = D0;
     if (par >= 4) {
-      var tee = null, rejected = [];
+      var tee = null, rejected = [], awayAim = null, awayFrom = null;
       for (var i = 0; i < clubs.length; i++) {
         var c = clubs[i];
         if (c.type === 'wedge') break;
         var trouble = bunkerTrouble(h, D0, c, cfg);
         // aiming away from a one-sided bunker is enough in Points and Attacking modes
         if (trouble && mode !== 'bogey' && h.drive && /left|right/.test(trouble.side) && h.drive.indexOf(trouble.side) < 0 && /left|right/.test(h.drive)) trouble = null;
+        // no aim line in the book (map-built book, golf cases 1.4.0): aim away from a one-sided bunker
+        var away = null;
+        if (trouble && mode !== 'bogey' && !h.drive && /^(left|right)$/.test(trouble.side) && oneSided(h, trouble.side)) { away = trouble.side; trouble = null; }
         var corner = h.dogleg ? D0 - h.dogleg.cornerToGreen : null;
         var through = corner != null && h.dogleg.angle >= 25 && c.total > corner + (mode === 'attack' ? 40 : 20);
-        if (!trouble && !through) { tee = c; break; }
+        if (!trouble && !through) { tee = c; if (away) { awayAim = OTHER[away]; awayFrom = away; } break; }
         rejected.push({ c: c, trouble: trouble, through: through, corner: corner });
       }
       if (!tee) tee = clubs.filter(function (c) { return c.type !== 'wedge'; }).slice(-1)[0] || clubs[0];
       var tline = shortName(tee) + ' off the tee (about ' + tee.total + ' m)';
-      var aim = h.drive ? ', aim ' + h.drive : '';
+      var aim = h.drive ? ', aim ' + h.drive : awayAim ? ', aim ' + awayAim + ' – away from the ' + awayFrom + ' bunker' : '';
       var because = '';
       if (rejected.length) {
         var rj = rejected[0];

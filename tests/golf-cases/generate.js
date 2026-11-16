@@ -52,6 +52,16 @@ const BAGS = {
 write('fixtures/bags.json', BAGS);
 write('fixtures/course-melville-glades.json', COURSE);
 write('fixtures/book-melville-glades.json', BOOK);
+// 1.4.0: a map-built book (Phase 3, PR 11). Same holes, with every field that only a club course tour can give removed:
+// no aim line, green slope, usual wind, extra hazards, tip, green note, links or name. Map data (lengths, elevation,
+// green depth, doglegs, bunkers) stays. Real new-course books come from the converter in PR 12.
+const TOUR_FIELDS = ['tip', 'greenNote', 'slope', 'drive', 'wind', 'extra', 'page', 'video', 'name'];
+const MAP_BOOK = E.clone(BOOK);
+MAP_BOOK.course = BOOK.course + ' (map-built test copy)';
+MAP_BOOK.sources = BOOK.sources.filter(x => !/course tour/i.test(x));
+MAP_BOOK.holes.forEach(h => TOUR_FIELDS.forEach(k => { delete h[k]; }));
+write('fixtures/book-melville-glades-map.json', MAP_BOOK);
+const BOOKS = { 'melville-glades': BOOK, 'melville-glades-map': MAP_BOOK };
 write('fixtures/course-par-si.json', E.COURSE);
 
 // rounds: the 3 imported MiScore rounds + synthetic rounds with full hole-card stats
@@ -199,15 +209,18 @@ function r6(x) { return Math.round(x * 1e6) / 1e6; }
   ['bogey', 'points', 'attack'].forEach(mode => configs.push({ mode, bag: 'default', dh: 17, rounds: 'all', noElevation: false }, { mode, bag: 'default', dh: 17, rounds: 'miscore', noElevation: true }));
   // 1.2.0 (added at the end so earlier case ids stay the same): no wedge in the bag, and a bag of 1 club
   ['bogey', 'points', 'attack'].forEach(mode => ['no-wedge', 'one-club'].forEach(bag => [17, 5].forEach(dh => configs.push({ mode, bag, dh, rounds: 'none', noElevation: false }))));
+  // 1.4.0 (added at the end): the map-built book, so the plan on a course without a yardage book is pinned down
+  ['bogey', 'points', 'attack'].forEach(mode => ['default', 'long-hitter', 'no-hybrid'].forEach(bag => [17, 5].forEach(dh => configs.push({ mode, bag, dh, rounds: 'none', noElevation: false, book: 'melville-glades-map' }))));
   configs.forEach(cfg => {
-    const st = ST.buildStrategy({ book: BOOK, bag: BAGS[cfg.bag], mode: cfg.mode, dailyHcp: cfg.dh, pars: E.COURSE.pars, si: E.COURSE.si,
+    const bookId = cfg.book || 'melville-glades';
+    const st = ST.buildStrategy({ book: BOOKS[bookId], bag: BAGS[cfg.bag], mode: cfg.mode, dailyHcp: cfg.dh, pars: E.COURSE.pars, si: E.COURSE.si,
       rounds: roundSets[cfg.rounds].map(k => ROUNDS[k]), strokesOnHole: E.strokesOnHole, dailyHcpFor: r => r.dailyHcp, thoughts: [], noElevation: cfg.noElevation });
     st.holes.forEach(h => {
-      cases.push({ fn: 'buildStrategy.hole', input: { book: 'melville-glades', bag: cfg.bag, mode: cfg.mode, dailyHcp: cfg.dh, rounds: cfg.rounds, noElevation: cfg.noElevation, hole: h.n },
+      cases.push({ fn: 'buildStrategy.hole', input: { book: bookId, bag: cfg.bag, mode: cfg.mode, dailyHcp: cfg.dh, rounds: cfg.rounds, noElevation: cfg.noElevation, hole: h.n },
         expected: { target: h.target, strokes: h.strokes, miss: h.miss, reached: h.reached, rise: h.rise, shots: h.shots.map(x => ({ kind: x.kind, club: x.club })) } });
     });
   });
-  suite('strategy', 'Course strategy per hole: target, handicap shots, shot plan (kind + club) and safe miss. Wording is not compared.', cases);
+  suite('strategy', 'Course strategy per hole: target, handicap shots, shot plan (kind + club) and safe miss. Wording is not compared. Books: melville-glades, and from 1.4.0 melville-glades-map (no aim line, slope, wind, extra hazards, tips or green notes).', cases);
 }
 
 /* ---------- rules (1.1.0) ---------- */

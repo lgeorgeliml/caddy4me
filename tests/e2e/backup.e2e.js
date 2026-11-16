@@ -1,5 +1,5 @@
 /* Caddy4Me prototype browser test - run with: node tests/e2e/run.js
- * Backup format (golf cases 1.3.0, backup/FORMAT.md): the prototype's Restore accepts every shared sample,
+ * Backup format (golf cases 1.3.0, format 1.1 from 1.4.0; backup/FORMAT.md): the prototype's Restore accepts every shared sample,
  * keeps fields it doesn't know (a newer prototype or the Android app wrote them), and its Export matches the schema.
  * Needs the pinned golf cases in ./golf-cases (as in CI) or GOLF_CASES_DIR. */
 const { chromium } = require(process.env.PLAYWRIGHT_PATH || 'playwright');
@@ -55,6 +55,11 @@ const TILE = fs.readFileSync(__dirname + '/../fixtures/tile.png');
       check(Array.isArray(out.practiceLog) && out.formatVersion === '1.1', f + ': unknown top-level field and formatVersion survive');
     }
     if (f === 'product-backup.json') check(out.product && out.product.app === sample.product.app, f + ': the Android product block survives');
+    if (f === 'second-course-1.1.json') {   // golf cases 1.4.0, format 1.1: course id, nines and tee per round in the product block
+      const pr = out.product && out.product.rounds || {};
+      check(Object.keys(pr).filter(k => pr[k].courseId).length === 2 && pr['2026-11-21T22:30:00.000Z'].layout.length === 2 && out.product.dayPins.some(d => d.courseId === 'point-walter'),
+        f + ': course ids, nines and day-pin course survive Restore → Export');
+    }
     if (f === 'v02-offcourse-si.json') {
       check(out.course.siSource === 'miscore-blue' && out.course.slope === 124 && out.course.scratch === 72, f + ': old course data upgraded on Restore');
     }

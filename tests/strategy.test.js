@@ -99,5 +99,27 @@ t('no wedge: short approaches never name a partial swing', () => ok(build({ bag:
 t('one club: every shot is that club', () => ok(build({ bag: bag().filter(c => c.id === '7i') }).holes.every(h => h.shots.every(x => x.club === '7 Iron'))));
 t('driver only: still a plan (no crash)', () => eq(build({ bag: bag().filter(c => c.id === 'D') }).holes.length, 18));
 
+// ---------- map-built book (v0.10, golf cases 1.4.0): no aim line, slope, wind, extra hazards, tips or green notes ----------
+const TOUR = ['tip', 'greenNote', 'slope', 'drive', 'wind', 'extra', 'page', 'video', 'name'];
+const MB = E.clone(B); MB.holes.forEach(h => TOUR.forEach(k => { delete h[k]; }));
+const mb = (o) => build(Object.assign({ book: MB }, o || {}));
+t('map book: 18 plans, every one reaches the green', () => { const p = mb({ mode: 'points' }); eq(p.holes.length, 18); ok(p.holes.every(h => h.reached && h.cue)); });
+t('map book: no Green line, no wind or extra-hazard warnings', () => { const p = mb(); ok(p.holes.every(h => h.green === '')); ok(p.holes.every(h => h.danger.every(d => !/Wind usually|Drop-off|carry only/.test(d)))); });
+t('map book hole 4 points: no aim line, so aim away from the left bunker and keep the driver', () => {
+  const h = hole(mb({ mode: 'points' }), 4); eq(h.shots[0].club, 'Driver'); ok(/aim right – away from the left bunker/.test(h.shots[0].text), h.shots[0].text); });
+t('map book hole 13 attack: aim left, away from the right bunker', () => {
+  const h = hole(mb({ mode: 'attack' }), 13); eq(h.shots[0].club, 'Driver'); ok(/aim left – away from the right bunker/.test(h.shots[0].text), h.shots[0].text); });
+t('map book hole 4 bogey: still clubs down short of the bunker', () => { const h = hole(mb(), 4); ok(h.shots[0].club !== 'Driver'); ok(!/away from/.test(h.shots[0].text)); ok(/left bunker/.test(h.shots[0].text)); });
+t('map book: bunkers on both sides -> no aim-away, clubs down', () => {
+  const two = E.clone(MB); const h4 = two.holes[3]; const lb = h4.bunkers.find(b => !b.greenside && b.side === 'left');
+  h4.bunkers.push(Object.assign({}, lb, { side: 'right' }));
+  const h = hole(build({ book: two, mode: 'points' }), 4); ok(h.shots[0].club !== 'Driver'); ok(!/away from/.test(h.shots[0].text)); });
+t('map book: a centre bunker is not aimed away from', () => {
+  const ctr = E.clone(MB); ctr.holes[3].bunkers.forEach(b => { if (!b.greenside) b.side = 'centre'; });
+  const h = hole(build({ book: ctr, mode: 'points' }), 4); ok(h.shots[0].club !== 'Driver'); ok(!/away from/.test(h.shots[0].text)); });
+t('a book aim line wins: Melville hole 4 points uses the book aim, never aim-away', () => {
+  const h = hole(build({ mode: 'points' }), 4); ok(/aim right-centre/.test(h.shots[0].text), h.shots[0].text); ok(!/away from/.test(h.shots[0].text)); });
+t('Melville book: no plan in any mode says "away from the"', () => ['bogey', 'points', 'attack'].forEach(m => ok(build({ mode: m }).holes.every(h => h.shots.every(x => !/away from the/.test(x.text))), m)));
+
 console.log(pass + ' passed, ' + fail + ' failed');
 process.exit(fail ? 1 : 0);

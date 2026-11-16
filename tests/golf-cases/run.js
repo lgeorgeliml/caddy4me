@@ -22,6 +22,8 @@ const BAGS = load('fixtures/bags.json');
 const ROUNDS = load('fixtures/rounds.json');
 const COURSES = { 'melville-glades': load('fixtures/course-melville-glades.json') };
 const BOOKS = { 'melville-glades': load('fixtures/book-melville-glades.json') };
+// 1.4.0: map-built book (older case sets don't have it)
+if (fs.existsSync(path.join(DIR, 'fixtures', 'book-melville-glades-map.json'))) BOOKS['melville-glades-map'] = load('fixtures/book-melville-glades-map.json');
 const PARSI = load('fixtures/course-par-si.json');
 
 const r1 = x => Math.round(x * 10) / 10;
