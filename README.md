@@ -36,4 +36,4 @@ This web app is the lean prototype (Track A). The Android product lives in the p
 Your bag, rounds and hole notes are stored only on your phone. Use Export backup to save a copy.
 
 ## Backup format
-The backup file is shared with the Android app: its format lives in the golf cases repo (`backup/FORMAT.md`, from golf cases 1.3.0). `tests/e2e/backup.e2e.js` restores every sample backup there, checks that fields this app doesn't know survive, and checks Export against the format. **A new stat on the hole card or round is added to the format first** (as an optional field), then built here, then in the Android app.
+The backup file is shared with the Android app: its format lives in the golf cases repo (`backup/FORMAT.md`, from golf cases 1.3.0; format 1.2 with the Android app's per-course data from 1.6.0, which this app keeps but doesn't use). `tests/e2e/backup.e2e.js` restores every sample backup there, checks that fields this app doesn't know survive, and checks Export against the format. **A new stat on the hole card or round is added to the format first** (as an optional field), then built here, then in the Android app.

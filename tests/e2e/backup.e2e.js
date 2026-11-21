@@ -1,5 +1,5 @@
 /* Caddy4Me prototype browser test - run with: node tests/e2e/run.js
- * Backup format (golf cases 1.3.0, format 1.1 from 1.4.0; backup/FORMAT.md): the prototype's Restore accepts every shared sample,
+ * Backup format (golf cases 1.3.0, format 1.1 from 1.4.0, format 1.2 from 1.6.0; backup/FORMAT.md): the prototype's Restore accepts every shared sample,
  * keeps fields it doesn't know (a newer prototype or the Android app wrote them), and its Export matches the schema.
  * Needs the pinned golf cases in ./golf-cases (as in CI) or GOLF_CASES_DIR. */
 const { chromium } = require(process.env.PLAYWRIGHT_PATH || 'playwright');
@@ -59,6 +59,12 @@ const TILE = fs.readFileSync(__dirname + '/../fixtures/tile.png');
       const pr = out.product && out.product.rounds || {};
       check(Object.keys(pr).filter(k => pr[k].courseId).length === 2 && pr['2026-11-21T22:30:00.000Z'].layout.length === 2 && out.product.dayPins.some(d => d.courseId === 'point-walter'),
         f + ': course ids, nines and day-pin course survive Restore → Export');
+    }
+    if (f === 'many-courses-1.2.json') {   // golf cases 1.6.0, format 1.2: per-course settings, notes on other courses, day pins by ref
+      const pd = out.product || {}, cs = pd.settings && pd.settings.courses || {};
+      check(pd.settings && pd.settings.lastCourseId === 'collier-park' && cs['collier-park'] && cs['collier-park'].layout.join('+') === 'Pines+Lake'
+        && Array.isArray(pd.holeNotes) && pd.holeNotes.length === 2 && (pd.dayPins || []).some(d => d.ref === 'L1') && out.formatVersion === '1.2',
+        f + ': per-course settings, notes on other courses and day-pin refs survive Restore → Export');
     }
     if (f === 'v02-offcourse-si.json') {
       check(out.course.siSource === 'miscore-blue' && out.course.slope === 124 && out.course.scratch === 72, f + ': old course data upgraded on Restore');
