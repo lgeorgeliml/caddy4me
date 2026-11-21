@@ -27,7 +27,7 @@ The release number lives in `version.js`: change it on every release and phones 
 - `version.js` - release number for Settings and the offline cache
 - `sw.js`, `manifest.webmanifest`, `icons/` - offline + install
 - `tests/` - unit tests, shared golf cases runner (`tests/golf-cases/`), browser tests (`tests/e2e/`) and test fixtures
-- `tests/golf-cases/generate.js` writes the shared golf cases from this app's logic; `strategy-texts.js` writes the plan-wording fixture the Android app checks against
+- `tests/golf-cases/generate.js` writes the shared golf cases from this app's logic; `strategy-texts.js` writes the plan-wording fixture the Android app checks against. From golf cases 1.5.0 the Perth course books (`fixtures/course-books.json` in the cases repo) are made by the Android repo's course tools and read from the cases checkout; the app itself stays Melville-only
 
 ## Tests
 GitHub Actions runs every test on each upload (`.github/workflows/test.yml`): unit tests, the shared golf test cases at the version in `golf-cases.version`, and the browser tests. Locally: `npm install`, `npx playwright install chromium`, then `npm test`.

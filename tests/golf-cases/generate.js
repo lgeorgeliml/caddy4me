@@ -62,6 +62,12 @@ MAP_BOOK.sources = BOOK.sources.filter(x => !/course tour/i.test(x));
 MAP_BOOK.holes.forEach(h => TOUR_FIELDS.forEach(k => { delete h[k]; }));
 write('fixtures/book-melville-glades-map.json', MAP_BOOK);
 const BOOKS = { 'melville-glades': BOOK, 'melville-glades-map': MAP_BOOK };
+// 1.5.0: real course books built from OpenStreetMap (spec Phase 3, PR 12). They are made by the Android repo's
+// tools/build-book.js --assemble and kept in the cases repo (fixtures/course-books.json lists them), so this
+// generator reads them from there rather than writing them. Their cases use the book's own pars and stroke indexes.
+const COURSE_BOOKS_FILE = path.join(OUT, 'fixtures', 'course-books.json');
+const COURSE_BOOKS = fs.existsSync(COURSE_BOOKS_FILE) ? JSON.parse(fs.readFileSync(COURSE_BOOKS_FILE, 'utf8')).books : [];
+COURSE_BOOKS.forEach(cb => { BOOKS[cb.book] = JSON.parse(fs.readFileSync(path.join(OUT, 'fixtures', 'book-' + cb.book + '.json'), 'utf8')); });
 write('fixtures/course-par-si.json', E.COURSE);
 
 // rounds: the 3 imported MiScore rounds + synthetic rounds with full hole-card stats
@@ -211,16 +217,21 @@ function r6(x) { return Math.round(x * 1e6) / 1e6; }
   ['bogey', 'points', 'attack'].forEach(mode => ['no-wedge', 'one-club'].forEach(bag => [17, 5].forEach(dh => configs.push({ mode, bag, dh, rounds: 'none', noElevation: false }))));
   // 1.4.0 (added at the end): the map-built book, so the plan on a course without a yardage book is pinned down
   ['bogey', 'points', 'attack'].forEach(mode => ['default', 'long-hitter', 'no-hybrid'].forEach(bag => [17, 5].forEach(dh => configs.push({ mode, bag, dh, rounds: 'none', noElevation: false, book: 'melville-glades-map' }))));
+  // 1.5.0 (added at the end): the Perth course books, default bag, in 3 modes at the daily handicap there and 5
+  COURSE_BOOKS.forEach(cb => ['bogey', 'points', 'attack'].forEach(mode => [cb.dailyHcp, 5].forEach(dh => configs.push({ mode, bag: 'default', dh, rounds: 'none', noElevation: false, book: cb.book, parsSi: 'book' }))));
   configs.forEach(cfg => {
     const bookId = cfg.book || 'melville-glades';
-    const st = ST.buildStrategy({ book: BOOKS[bookId], bag: BAGS[cfg.bag], mode: cfg.mode, dailyHcp: cfg.dh, pars: E.COURSE.pars, si: E.COURSE.si,
+    const ownCard = cfg.parsSi === 'book'; // the book's own pars and stroke indexes, not Melville's card
+    const st = ST.buildStrategy({ book: BOOKS[bookId], bag: BAGS[cfg.bag], mode: cfg.mode, dailyHcp: cfg.dh, pars: ownCard ? [] : E.COURSE.pars, si: ownCard ? [] : E.COURSE.si,
       rounds: roundSets[cfg.rounds].map(k => ROUNDS[k]), strokesOnHole: E.strokesOnHole, dailyHcpFor: r => r.dailyHcp, thoughts: [], noElevation: cfg.noElevation });
     st.holes.forEach(h => {
-      cases.push({ fn: 'buildStrategy.hole', input: { book: bookId, bag: cfg.bag, mode: cfg.mode, dailyHcp: cfg.dh, rounds: cfg.rounds, noElevation: cfg.noElevation, hole: h.n },
+      const input = { book: bookId, bag: cfg.bag, mode: cfg.mode, dailyHcp: cfg.dh, rounds: cfg.rounds, noElevation: cfg.noElevation, hole: h.n };
+      if (ownCard) input.parsSi = 'book';
+      cases.push({ fn: 'buildStrategy.hole', input,
         expected: { target: h.target, strokes: h.strokes, miss: h.miss, reached: h.reached, rise: h.rise, shots: h.shots.map(x => ({ kind: x.kind, club: x.club })) } });
     });
   });
-  suite('strategy', 'Course strategy per hole: target, handicap shots, shot plan (kind + club) and safe miss. Wording is not compared. Books: melville-glades, and from 1.4.0 melville-glades-map (no aim line, slope, wind, extra hazards, tips or green notes).', cases);
+  suite('strategy', 'Course strategy per hole: target, handicap shots, shot plan (kind + club) and safe miss. Wording is not compared. Books: melville-glades, from 1.4.0 melville-glades-map (no aim line, slope, wind, extra hazards, tips or green notes), and from 1.5.0 the Perth course books in fixtures/course-books.json (input parsSi "book": the book\'s own pars and stroke indexes).', cases);
 }
 
 /* ---------- rules (1.1.0) ---------- */

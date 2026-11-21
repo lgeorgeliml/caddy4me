@@ -22,6 +22,8 @@ const BAGS = load('fixtures/bags.json'), ROUNDS = load('fixtures/rounds.json');
 const BOOKS = { 'melville-glades': load('fixtures/book-melville-glades.json') }, PARSI = load('fixtures/course-par-si.json');
 // golf cases 1.4.0: the map-built book (no aim line, slope, wind, extra hazards, tips or green notes)
 if (fs.existsSync(path.join(DIR, 'fixtures', 'book-melville-glades-map.json'))) BOOKS['melville-glades-map'] = load('fixtures/book-melville-glades-map.json');
+// golf cases 1.5.0: the Perth course books (fixtures/course-books.json)
+if (fs.existsSync(path.join(DIR, 'fixtures', 'course-books.json'))) load('fixtures/course-books.json').books.forEach(cb => { BOOKS[cb.book] = load('fixtures/book-' + cb.book + '.json'); });
 const sets = { none: [], miscore: Object.keys(ROUNDS).filter(k => k.startsWith('miscore')), all: Object.keys(ROUNDS) };
 
 const CONFIGS = [
@@ -34,11 +36,15 @@ const CONFIGS = [
   // v0.10 / golf cases 1.4.0: a course with only a map-built book (no `book` = melville-glades)
   { book: 'melville-glades-map', mode: 'points', bag: 'default', dailyHcp: 17, rounds: 'none', noElevation: false, thoughts: [] },
   { book: 'melville-glades-map', mode: 'attack', bag: 'long-hitter', dailyHcp: 5, rounds: 'all', noElevation: false, thoughts: ['Commit'] },
-  { book: 'melville-glades-map', mode: 'bogey', bag: 'no-hybrid', dailyHcp: 17, rounds: 'none', noElevation: false, thoughts: [] }
+  { book: 'melville-glades-map', mode: 'bogey', bag: 'no-hybrid', dailyHcp: 17, rounds: 'none', noElevation: false, thoughts: [] },
+  // golf cases 1.5.0: two Perth course books, with their own pars and stroke indexes (parsSi: 'book')
+  { book: 'point-walter', parsSi: 'book', mode: 'points', bag: 'default', dailyHcp: 14, rounds: 'none', noElevation: false, thoughts: [] },
+  { book: 'collier-park-pines-island', parsSi: 'book', mode: 'attack', bag: 'long-hitter', dailyHcp: 17, rounds: 'none', noElevation: false, thoughts: ['Commit'] }
 ];
 
 const configs = CONFIGS.filter(c => BAGS[c.bag] && BOOKS[c.book || 'melville-glades']).map(input => {
-  const p = ST.buildStrategy({ book: BOOKS[input.book || 'melville-glades'], bag: BAGS[input.bag], mode: input.mode, dailyHcp: input.dailyHcp, pars: PARSI.pars, si: PARSI.si,
+  const ownCard = input.parsSi === 'book';
+  const p = ST.buildStrategy({ book: BOOKS[input.book || 'melville-glades'], bag: BAGS[input.bag], mode: input.mode, dailyHcp: input.dailyHcp, pars: ownCard ? [] : PARSI.pars, si: ownCard ? [] : PARSI.si,
     rounds: sets[input.rounds].map(k => ROUNDS[k]), strokesOnHole: E.strokesOnHole, dailyHcpFor: r => r.dailyHcp, thoughts: input.thoughts, noElevation: input.noElevation });
   return { input, modeLabel: p.modeLabel, bagSig: p.bagSig, rounds: p.rounds,
     holes: p.holes.map(h => ({ n: h.n, targetText: h.targetText, strip: h.strip, missText: h.missText, green: h.green, cue: h.cue,

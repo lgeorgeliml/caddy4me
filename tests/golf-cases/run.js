@@ -24,6 +24,8 @@ const COURSES = { 'melville-glades': load('fixtures/course-melville-glades.json'
 const BOOKS = { 'melville-glades': load('fixtures/book-melville-glades.json') };
 // 1.4.0: map-built book (older case sets don't have it)
 if (fs.existsSync(path.join(DIR, 'fixtures', 'book-melville-glades-map.json'))) BOOKS['melville-glades-map'] = load('fixtures/book-melville-glades-map.json');
+// 1.5.0: the Perth course books (fixtures/course-books.json; older case sets don't have it)
+if (fs.existsSync(path.join(DIR, 'fixtures', 'course-books.json'))) load('fixtures/course-books.json').books.forEach(cb => { BOOKS[cb.book] = load('fixtures/book-' + cb.book + '.json'); });
 const PARSI = load('fixtures/course-par-si.json');
 
 const r1 = x => Math.round(x * 10) / 10;
@@ -53,10 +55,11 @@ const FN = {
   holeBearing: i => r1(C.holeBearing(hole(i.course, i.hole))),
   rulesAllows: i => RU.allows(i.ruleSet, i.feature),
   'buildStrategy.hole': i => {
-    const key = [i.book, i.bag, i.mode, i.dailyHcp, i.rounds, i.noElevation].join('|');
+    const key = [i.book, i.bag, i.mode, i.dailyHcp, i.rounds, i.noElevation, i.parsSi].join('|');
     if (!stratCache[key]) {
       const sets = { none: [], miscore: Object.keys(ROUNDS).filter(k => k.startsWith('miscore')), all: Object.keys(ROUNDS) };
-      stratCache[key] = ST.buildStrategy({ book: BOOKS[i.book], bag: BAGS[i.bag], mode: i.mode, dailyHcp: i.dailyHcp, pars: PARSI.pars, si: PARSI.si,
+      const ownCard = i.parsSi === 'book'; // 1.5.0: the book's own pars and stroke indexes
+      stratCache[key] = ST.buildStrategy({ book: BOOKS[i.book], bag: BAGS[i.bag], mode: i.mode, dailyHcp: i.dailyHcp, pars: ownCard ? [] : PARSI.pars, si: ownCard ? [] : PARSI.si,
         rounds: sets[i.rounds].map(k => ROUNDS[k]), strokesOnHole: E.strokesOnHole, dailyHcpFor: r => r.dailyHcp, thoughts: [], noElevation: i.noElevation });
     }
     const h = stratCache[key].holes[i.hole - 1];
