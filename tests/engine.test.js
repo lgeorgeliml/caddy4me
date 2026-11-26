@@ -197,5 +197,65 @@ t('no putting-distance suggestions without lengths', () => {
   ok(!a.suggestions.some(x => x.key === 'lag' || x.key === 'shortputt'));
 });
 
+// ---------- v0.11: Consistency Factor, 9-hole daily handicap, strokes on a nine, Last 5 nines, 9-hole scores files ----------
+t('Consistency Factor: Wembley Tuart Green at GA 16.6 is 12 (12.511 without, 12.494 with)', () => { eq(E.dailyHandicap(16.6, 112, 67, 70), 12); eq(E.dailyHandicap(16.6, 112, 67, 70, 'men'), 12); });
+t('Consistency Factor: every other checked course unchanged at GA 16.6', () => {
+  [[124, 72, 72, 17], [116, 69, 72, 13], [115, 68, 70, 14], [108, 62, 68, 9], [106, 69, 72, 12], [122, 72, 72, 17], [118, 70, 71, 15], [123, 71, 71, 17]]
+    .forEach(([sl, sc, par, d]) => eq(E.dailyHandicap(16.6, sl, sc, par), d, sl + '/' + sc));
+});
+t('Consistency Factor: GA 10.3 slope 124 crosses .5 (10.51 -> 10)', () => eq(E.dailyHandicap(10.3, 124, 72, 72), 10));
+t('women\'s factor 1.0483: GA 16.6 Melville Blue -> 18', () => { eq(E.consistencyFactor('women'), 1.0483); eq(E.dailyHandicap(16.6, 124, 72, 72, 'women'), 18); eq(E.consistencyFactor('x'), 0.9986); });
+t('9-hole daily handicap: Melville front 9, back 8 (CAD-39, MiScore)', () => { eq(E.dailyHandicap9(16.6, 127, 36, 36), 9); eq(E.dailyHandicap9(16.6, 121, 36, 36), 8); });
+t('9-hole daily handicap: half-stroke scratch kept (Wembley Old front 34.5 -> 7, Point Walter 33.5 -> 6)', () => { eq(E.dailyHandicap9(16.6, 121, 34.5, 36), 7); eq(E.dailyHandicap9(16.6, 115, 33.5, 35), 6); });
+t('9-hole daily handicap: no GA -> null', () => eq(E.dailyHandicap9(null, 127, 36, 36), null));
+const MF = E.COURSE.si.slice(0, 9), MBK = E.COURSE.si.slice(9, 18);
+t('strokes on Melville front nine at 8: every hole except 5 (SI 18)', () => eq(E.strokesOnNine(8, MF).join(''), '111101111'));
+t('strokes on Melville front nine at 9: every hole', () => eq(E.strokesOnNine(9, MF).join(''), '111111111'));
+t('strokes on Melville front nine at 10: a second on hole 7 (SI 3)', () => eq(E.strokesOnNine(10, MF).join(''), '111111211'));
+t('strokes on Melville back nine at 8: every hole except 15 (SI 17)', () => eq(E.strokesOnNine(8, MBK).join(''), '111110111'));
+t('plus 1 on the front nine: a stroke back on hole 5 (rank 9)', () => eq(E.strokesOnNine(-1, MF).join(','), '0,0,0,0,-1,0,0,0,0'));
+t('Point Walter at 6: no stroke on 2, 3 and 7 (CAD-39)', () => eq(E.strokesOnNine(6, [2, 17, 13, 5, 3, 11, 15, 7, 9]).join(''), '100111011'));
+t('strokes on a nine with no daily handicap: none', () => eq(E.strokesOnNine(null, MF).join(''), '000000000'));
+const nineRound = (id, date, nine, f) => { const r = mkRound(id, date, f); r.nine = nine; const g = E.nineRange(nine);
+  r.holes.forEach((h, i) => { if (i < g[0] || i >= g[1]) Object.assign(h, { score: null, putts: null, points: null, gir: null, fairway: null, approach: null, penalties: 0, wasted: 0 }); }); return r; };
+t('roundDone: a nine is done when its 9 holes are scored', () => { const r = nineRound('a', '2026-11-01', 'back', good); ok(E.roundDone(r)); r.holes[12].score = null; ok(!E.roundDone(r)); ok(!E.roundDone({ holes: r.holes })); });
+t('Last 5 nines: needs 2 finished nines; 18-hole rounds ignored', () => {
+  const a = E.analyseNines([nineRound('a', '2026-11-01', 'front', good), mkRound('b', '2026-11-02', good), mkRound('c', '2026-11-03', good)]);
+  eq(a.count, 1); eq(a.enough, false);
+});
+t('Last 5 rounds ignores nines', () => { const a = E.analyseRounds([nineRound('a', '2026-11-01', 'front', good), mkRound('b', '2026-11-02', good)]); eq(a.count, 1); });
+t('Last 5 nines: front and back mixed, per-nine averages', () => {
+  const a = E.analyseNines([nineRound('a', '2026-11-01', 'front', good), nineRound('b', '2026-11-02', 'back', good)]);
+  eq(a.count, 2); eq(a.avg.pts, 27); eq(a.avg.gross, 36); eq(a.rounds[1].nine, 'back'); eq(a.suggestions.length, 0);
+});
+// 1 three-putt, 1 penalty and 2 wasted a nine: below the 18-hole levels, at the halved nine levels
+const leakyNine = i => ({ score: 5, putts: i === 0 || i === 9 ? 3 : 2, points: 2, gir: false, approach: 'hit', penalties: i === 1 || i === 10 ? 1 : 0, wasted: i === 2 || i === 11 ? 2 : 0 });
+t('Last 5 nines: three-putt, penalty and wasted levels halved (1, 1, 2 a nine)', () => {
+  const a = E.analyseNines([nineRound('a', '2026-11-01', 'front', leakyNine), nineRound('b', '2026-11-02', 'back', leakyNine)]);
+  eq(a.avg.three, 1); eq(a.avg.pen, 1); eq(a.avg.wasted, 2);
+  const k = a.suggestions.map(x => x.key + ':' + x.shots).join(' ');
+  ok(/threeputt:0\.5/.test(k) && /penalty:0\.5/.test(k) && /wasted:1\b/.test(k), k);
+  ok(a.suggestions.every(x => !/a round/.test(x.detail)) && a.suggestions.some(x => / a nine$/.test(x.detail)), 'details say "a nine"');
+});
+t('the same levels on 18 holes stay below the 18-hole thresholds', () => {
+  const a = E.analyseRounds([mkRound('a', '2026-11-01', i => (i < 9 ? leakyNine(i) : good(i))), mkRound('b', '2026-11-02', i => (i < 9 ? leakyNine(i) : good(i)))]);
+  ok(!a.suggestions.some(x => /threeputt|penalty|wasted/.test(x.key)), a.suggestions.map(x => x.key).join(','));
+});
+const f18 = require('./fixtures/scores/caddy4me-scores-2026-10-18.json');
+const part = (from, to) => Object.assign({}, f18, { holes: f18.holes.filter(h => h.n >= from && h.n <= to) });
+t('scores file on holes 1-9 only = front nine; 10-18 only = back nine; 18 holes = null', () => { eq(E.scoresNine(part(1, 9)), 'front'); eq(E.scoresNine(part(10, 18)), 'back'); eq(E.scoresNine(f18), null); eq(E.scoresNine(part(1, 8)), null); });
+t('scores file: blank holes outside the nine still mean that nine', () => {
+  const f = JSON.parse(JSON.stringify(f18)); f.holes.forEach(h => { if (h.n > 9) h.score = null; }); eq(E.scoresNine(f), 'front');
+});
+const blank18 = () => ({ id: 'x', date: f18.date, holes: E.COURSE.pars.map((par, i) => ({ n: i + 1, par, si: E.COURSE.si[i], score: null })) });
+t('a back-nine file into a new back-nine round: done, daily handicap from the file', () => {
+  const r = blank18(); r.nine = 'back'; const f = part(10, 18); f.dailyHcp = 8;
+  eq(E.mergeScores(r, f), 9); ok(r.done); eq(r.dailyHcp, 8); ok(r.holes.slice(0, 9).every(h => h.score == null));
+});
+t('a 9-hole file merged into an 18-hole round keeps it 18 holes (not done until all 18)', () => {
+  const r = blank18(); eq(E.mergeScores(r, part(1, 9)), 9); ok(!r.done); ok(!r.nine);
+  E.mergeScores(r, part(10, 18)); ok(r.done);
+});
+
 console.log(pass + ' passed, ' + fail + ' failed');
 process.exit(fail ? 1 : 0);

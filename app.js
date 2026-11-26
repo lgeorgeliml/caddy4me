@@ -1,4 +1,4 @@
-/* Caddy4Me app - screens, GPS, wind, storage, course strategy (v0.8: features decided by rules.js) */
+/* Caddy4Me app - screens, GPS, wind, storage, course strategy (v0.8: features decided by rules.js; v0.11: 9-hole rounds) */
 (function () {
   'use strict';
   var E = window.C4M, ST = window.C4MStrategy, R = window.C4MRules, VER = window.C4M_VERSION || { v: '?', date: '' };
@@ -48,6 +48,9 @@
     if (s.course.slope == null) s.course.slope = C.slope;
     if (s.course.scratch == null) s.course.scratch = C.scratch;
     if (s.settings.ga === undefined) s.settings.ga = 16.9;
+    // v0.11: the home course's 9-hole ratings (backup format 1.3 course.nines), the checked Blue Men values until edited
+    s.course.nines = s.course.nines || {};
+    ['front', 'back'].forEach(function (k) { if (!s.course.nines[k]) s.course.nines[k] = E.clone(E.COURSE_NINES[k]); });
     return s;
   }
   function save() { try { localStorage.setItem(KEY, JSON.stringify(S)); } catch (e) { /* storage full or blocked */ } }
@@ -106,19 +109,21 @@
   function greeting() { var h = new Date().getHours(); return h < 12 ? 'Morning' : h < 17 ? 'Afternoon' : 'Evening'; }
   function mood() { var h = new Date().getHours(); return h < 9 ? 'First light, dew on the greens' : h < 17 ? 'A good day for a walk' : 'Twilight round'; }
   // running Stableford total as a glowing line (Summary)
-  function pointsChart(hs) {
-    var tot = 0, pts = [];
+  // hs: the holes played (18, or a nine's 9); first: the first hole's number (v0.11)
+  function pointsChart(hs, first) {
+    first = first || 1;
+    var tot = 0, pts = [], nh = hs.length, target = nh === 9 ? 18 : 36;
     hs.forEach(function (h, i) { if (h.score != null) { tot += (h.points || 0); pts.push([i, tot]); } });
     if (pts.length < 2) return '';
-    var W = 326, H = 132, top = Math.max(36, tot);
-    var xy = pts.map(function (p) { return [5 + p[0] * (316 / 17), 118 - (p[1] / top) * 108]; });
+    var W = 326, H = 132, top = Math.max(target, tot);
+    var xy = pts.map(function (p) { return [5 + p[0] * (316 / (nh - 1)), 118 - (p[1] / top) * 108]; });
     var d = 'M' + xy[0][0].toFixed(1) + ' ' + xy[0][1].toFixed(1);
     for (var i = 1; i < xy.length; i++) {
       var mx = ((xy[i - 1][0] + xy[i][0]) / 2).toFixed(1);
       d += ' C' + mx + ' ' + xy[i - 1][1].toFixed(1) + ',' + mx + ' ' + xy[i][1].toFixed(1) + ',' + xy[i][0].toFixed(1) + ' ' + xy[i][1].toFixed(1);
     }
-    var e = xy[xy.length - 1], y36 = (118 - (36 / top) * 108).toFixed(1);
-    return '<div class="card chartcard"><div class="top"><span>POINTS THROUGH THE ROUND</span><span>Target 36</span></div>' +
+    var e = xy[xy.length - 1], y36 = (118 - (target / top) * 108).toFixed(1);
+    return '<div class="card chartcard"><div class="top"><span>POINTS THROUGH THE ROUND</span><span>Target ' + target + '</span></div>' +
       '<svg viewBox="0 0 ' + W + ' ' + H + '" role="img" aria-label="Running Stableford total, ' + tot + ' points after ' + pts.length + ' holes">' +
       '<defs><filter id="glow" x="-20%" y="-50%" width="140%" height="200%"><feGaussianBlur stdDeviation="4"/></filter></defs>' +
       '<line x1="0" y1="' + y36 + '" x2="' + W + '" y2="' + y36 + '" stroke="#3A3F3B" stroke-dasharray="3 5"/>' +
@@ -126,7 +131,7 @@
       '<path d="' + d + '" fill="none" stroke="#A6F36A" stroke-width="6" opacity=".55" filter="url(#glow)"/>' +
       '<path d="' + d + '" fill="none" stroke="#A6F36A" stroke-width="2.5" stroke-linejoin="round" stroke-linecap="round"/>' +
       '<circle cx="' + e[0].toFixed(1) + '" cy="' + e[1].toFixed(1) + '" r="5" fill="#A6F36A" stroke="#0A0B0A" stroke-width="2"/></svg>' +
-      '<div class="axis"><span>Hole 1</span><span>9</span><span>18</span></div></div>';
+      '<div class="axis"><span>Hole ' + first + '</span><span>' + (nh === 9 ? first + 4 : 9) + '</span><span>' + (first + nh - 1) + '</span></div></div>';
   }
   function ring(value, max) {
     var C = 2 * Math.PI * 48, f = Math.max(0, Math.min(1, value / max));
@@ -161,7 +166,7 @@
     var nextHole = open ? firstOpenHole(r) + 1 : 1;
     var dh = currentDH();
     var weather = S.wind && Date.now() - S.wind.at < 3 * 3600000 ? '<span class="weather">' + ic('wind') + Math.round(S.wind.speed) + ' km/h ' + compass(S.wind.from) + '</span>' : '';
-    var lastCard = home5Html();
+    var lastCard = home5Html() + home9Html();
     var tp = S.prep.thoughts.length, vp = S.prep.videos.length;
     function rowBtn(a, icon, title, sub) {
       return '<button class="row-btn" data-a="' + a + '"><span class="badge">' + ic(icon) + '</span><span class="t"><b>' + title + '</b><span>' + sub + '</span></span>' + ic('right') + '</button>';
@@ -170,7 +175,7 @@
       '<div class="hello"><div><div class="date">' + niceDate() + '</div><div class="name">' + greeting() + (playerName() ? ', ' + esc(playerName()) : '') + '</div></div>' + weather + '</div>' +
       '<div class="photo herocard"><img src="' + IMG.amen + '" alt="Stone bridge over the creek to a par-3 green lined with azaleas">' +
       '<span class="over tag lime">MELVILLE GLADES</span>' + (tourOn() ? '<span class="over tag tour hometour">TOURNAMENT MODE</span>' : '') +
-      '<div class="over cap"><div class="mood">' + mood() + '</div><div class="info">' + (open ? 'Round in progress · next up hole ' + nextHole : '18 holes · Daily handicap ' + (dh != null ? dh : '–')) + '</div></div></div>' +
+      '<div class="over cap"><div class="mood">' + mood() + '</div><div class="info">' + (open ? 'Round in progress · next up hole ' + nextHole + (nineOf(r) ? ' · ' + NINE_LABEL[r.nine].toLowerCase() : '') : '18 holes · Daily handicap ' + (dh != null ? dh : '–')) + '</div></div></div>' +
       rowBtn('prep', 'drop', 'Before your round', (tp ? tp + ' swing thought' + (tp > 1 ? 's' : '') : 'Add swing thoughts') + ' · ' + vp + ' video' + (vp === 1 ? '' : 's')) +
       (open ? '<button class="btn primary" data-a="resume">Resume · Hole ' + nextHole + ic('play') + '</button>' +
               '<button class="btn" data-a="newRound">Start a new round</button>' +
@@ -183,16 +188,20 @@
       rowBtn('settings', 'gear', 'Settings', 'Handicap, course &amp; backups') + '</div>' +
       '<p class="note">Club advice from a device isn’t allowed in competition (Rule 4.3). Use Tournament Mode to turn off features not allowed during competition.</p></div>';
   }
-  function firstOpenHole(r) { for (var i = 0; i < 18; i++) if (r.holes[i].score == null) return i; return 17; }
-  function newRound(mode) {
+  // the holes a round is played on, as [first index, end]: the 18, or its nine (v0.11)
+  function holeSpan(r) { return (r && E.nineRange(r.nine)) || [0, 18]; }
+  function firstOpenHole(r) { var g = holeSpan(r); for (var i = g[0]; i < g[1]; i++) if (r.holes[i].score == null) return i; return g[1] - 1; }
+  function newRound(mode, nine) {
     mode = MODE_KEYS.indexOf(mode) >= 0 ? mode : stratMode();
+    nine = E.nineRange(nine) ? nine : null;
     var holes = [];
     for (var i = 0; i < 18; i++) holes.push({ n: i + 1, par: S.course.pars[i], si: S.course.si[i], score: null, putts: null, approach: null, upDown: null, sand: 0, penalties: 0, wasted: 0 });
-    var r = { id: new Date().toISOString(), date: today(), ground: 'normal', holes: holes, done: false, dailyHcp: currentDH(), player: playerName() || null, tournament: !!S.settings.tournament };
+    var r = { id: new Date().toISOString(), date: today(), ground: 'normal', holes: holes, done: false, dailyHcp: nine ? currentDH9(nine) : currentDH(), player: playerName() || null, tournament: !!S.settings.tournament };
+    if (nine) r.nine = nine;   // v0.11: a 9-hole round keeps all 18 hole entries; the other nine stays blank (backup format 1.3)
     // v0.6: the course strategy is fixed for the round when it starts (no plays-like heights in Tournament Mode)
-    r.strategy = compactPlan(buildPlan(mode, !R.allows(R.ruleSetFor(r.tournament), 'planPlaysLike')));
+    r.strategy = compactPlan(buildPlan(mode, !R.allows(R.ruleSetFor(r.tournament), 'planPlaysLike'), nine));
     S.rounds.push(r); S.currentRoundId = r.id; save();
-    ui.holeIdx = 0; freshHoleUi(ui); go('hole');
+    ui.holeIdx = holeSpan(r)[0]; freshHoleUi(ui); go('hole');
   }
 
   /* ---------- hole screen ---------- */
@@ -440,8 +449,8 @@
   }
 
   function changeHole(delta) {
-    var n = ui.holeIdx + delta;
-    if (n < 0 || n > 17) return;
+    var g = holeSpan(cur()), n = ui.holeIdx + delta;   // v0.11: the arrows stay within a 9-hole round's nine
+    if (n < g[0] || n > g[1] - 1) return;
     ui.holeIdx = n; freshHoleUi(ui);
     if (map) { map.setTarget(null); applyHoleView(); }
     maybeFetchWind(true);
@@ -476,12 +485,28 @@
   /* ---------- course + handicap ---------- */
   function coursePar() { return S.course.pars.reduce(function (a, p, i) { return a + (p || E.COURSE.pars[i]); }, 0); }
   function currentDH() { return E.dailyHandicap(S.settings.ga, S.course.slope, S.course.scratch, coursePar()); }
-  function roundDH(r) { return r.dailyHcp != null ? r.dailyHcp : currentDH(); }
+  /* v0.11: 9-hole rounds. A nine is offered only with its ratings set (the checked Melville values by default). */
+  var NINE_LABEL = { front: 'Front nine', back: 'Back nine' };
+  function nineOf(r) { return r && E.nineRange(r.nine) ? r.nine : null; }
+  function ninePar(nine) { var g = E.nineRange(nine); return S.course.pars.slice(g[0], g[1]).reduce(function (a, p, k) { return a + (p || E.COURSE.pars[g[0] + k]); }, 0); }
+  function nineRating(nine) { var n = S.course.nines && S.course.nines[nine]; return E.nineRange(nine) && n && n.slope > 0 && n.scratch > 0 ? n : null; }
+  function ninesOffered() { return ['front', 'back'].filter(nineRating); }
+  function currentDH9(nine) { var n = nineRating(nine); return n ? E.dailyHandicap9(S.settings.ga, n.slope, n.scratch, ninePar(nine)) : null; }
+  function roundDH(r) { return r.dailyHcp != null ? r.dailyHcp : (nineOf(r) ? currentDH9(r.nine) : currentDH()); }
+  // strokes received on hole i: the 18-hole rule, or on a nine its own ranking by 18-hole SI (spec default 11)
+  function holeStrokes(r, i) {
+    var g = E.nineRange(r.nine);
+    if (!g) return E.strokesOnHole(roundDH(r), holeSI(r, i));
+    if (i < g[0] || i >= g[1]) return 0;
+    var sis = [];
+    for (var k = g[0]; k < g[1]; k++) sis.push(holeSI(r, k));
+    return E.strokesOnNine(roundDH(r), sis)[i - g[0]];
+  }
   function holeSI(r, i) { return (r.holes[i].si) || S.course.si[i] || E.COURSE.si[i]; }
   function holePar(r, i) { return r.holes[i].par || S.course.pars[i] || E.COURSE.pars[i]; }
   function holePoints(r, i, h) {
     h = h || r.holes[i];
-    return E.stablefordPoints(h.par || holePar(r, i), h.score, E.strokesOnHole(roundDH(r), holeSI(r, i)));
+    return E.stablefordPoints(h.par || holePar(r, i), h.score, holeStrokes(r, i));
   }
   function holesWithPoints(r) {
     return r.holes.map(function (h, i) {
@@ -502,25 +527,35 @@
   // finished and imported rounds feed the plan; the round being played does not
   function historyRounds() {
     return S.rounds.filter(function (r) { return !(r.id === S.currentRoundId && !r.done); })
-      .map(function (r) { return { id: r.id, date: r.date, dailyHcp: roundDH(r), holes: holesWithPoints(r) }; })
+      .map(function (r) { return { id: r.id, date: r.date, dailyHcp: roundDH(r), nine: nineOf(r), holes: holesWithPoints(r) }; })
       .filter(function (r) { return r.holes.some(function (h) { return h.score != null; }); });
   }
-  function buildPlan(mode, noElevation) {
+  // v0.11: with a nine, the plan is built for that nine only, on its 9-hole daily handicap and strokes
+  function buildPlan(mode, noElevation, nine) {
     if (!ST || !window.C4M_BOOK) return null;
-    return ST.buildStrategy({ book: window.C4M_BOOK, bag: S.bag, mode: mode, dailyHcp: currentDH(), pars: S.course.pars, si: S.course.si,
-      rounds: historyRounds(), strokesOnHole: E.strokesOnHole, thoughts: S.prep.thoughts, noElevation: !!noElevation });
+    var o = { book: window.C4M_BOOK, bag: S.bag, mode: mode, dailyHcp: currentDH(), pars: S.course.pars, si: S.course.si,
+      rounds: historyRounds(), strokesOnHole: E.strokesOnHole, thoughts: S.prep.thoughts, noElevation: !!noElevation };
+    if (E.nineRange(nine)) { o.nine = nine; o.dailyHcp = currentDH9(nine); o.strokesOnNine = E.strokesOnNine; }
+    return ST.buildStrategy(o);
   }
   function compactPlan(p) {
     if (!p) return null;
-    return { mode: p.mode, modeLabel: p.modeLabel, at: today(), noElevation: p.noElevation, holes: p.holes.map(function (h) {
+    var c = { mode: p.mode, modeLabel: p.modeLabel, at: today(), noElevation: p.noElevation, holes: p.holes.map(function (h) {
       return { n: h.n, strip: h.strip, targetText: h.targetText, shots: h.shots.map(function (x) { return x.text; }), missText: h.missText, green: h.green, cue: h.cue, danger: h.danger };
     }) };
+    if (p.nine) c.nine = p.nine;
+    return c;
+  }
+  // a plan's hole by its number (a nine's plan holds only its own 9 holes)
+  function planHoleAt(p, n) {
+    var hs = p.holes || [], h = hs[n - 1];
+    return h && (h.n === n || h.n == null) ? h : hs.filter(function (x) { return x.n === n; })[0] || null;
   }
   // the plan saved when the round started; a round started before v0.6 gets today's plan once
   function roundPlan(r, idx) {
     if (!r) return null;
-    if (!r.strategy || !r.strategy.holes) { r.strategy = compactPlan(buildPlan(stratMode(), !R.allows(R.ruleSetFor(r.tournament), 'planPlaysLike'))); if (r.strategy) save(); }
-    return r.strategy ? { mode: r.strategy.modeLabel, h: r.strategy.holes[idx] } : null;
+    if (!r.strategy || !r.strategy.holes) { r.strategy = compactPlan(buildPlan(stratMode(), !R.allows(R.ruleSetFor(r.tournament), 'planPlaysLike'), nineOf(r))); if (r.strategy) save(); }
+    return r.strategy ? { mode: r.strategy.modeLabel, h: planHoleAt(r.strategy, idx + 1) } : null;
   }
   // "Updated" date: moves whenever the bag, the rounds, the handicap or the swing thoughts change
   function strategyMeta() {
@@ -536,9 +571,28 @@
   function shotList(shots) { return '<ol class="shots">' + shots.map(function (t) { return '<li>' + esc(t) + '</li>'; }).join('') + '</ol>'; }
   function dangerList(d) { return d && d.length ? '<ul class="danger">' + d.map(function (t) { return '<li>' + esc(t) + '</li>'; }).join('') + '</ul>' : ''; }
 
+  // v0.11: the length (and nine) last played, else 18 holes; only nines with ratings are offered
+  function lastRound() { return S.rounds.slice().sort(function (a, b) { return (a.date + a.id) < (b.date + b.id) ? 1 : -1; })[0] || null; }
+  function startDefaults() {
+    var last = lastRound(), offered = ninesOffered();
+    var nine = last && nineOf(last) && offered.indexOf(last.nine) >= 0 ? last.nine : null;
+    ui.startLen = nine ? 9 : 18;
+    ui.startNine = nine || offered[0] || null;
+  }
   function startModal() {
     var m = ui.startMode || stratMode();
+    var offered = ninesOffered(), len = ui.startLen === 9 && offered.length ? 9 : 18;
+    var nine = offered.indexOf(ui.startNine) >= 0 ? ui.startNine : offered[0];
+    var dh = len === 9 ? currentDH9(nine) : currentDH();
+    var lenSeg = offered.length ? '<div class="seg solid lenseg" id="lenseg"><button data-a="pickLen" data-v="18" class="' + (len === 18 ? 'on' : '') + '">18 holes</button>' +
+      '<button data-a="pickLen" data-v="9" class="' + (len === 9 ? 'on' : '') + '">9 holes</button></div>' : '';
+    var nineSeg = len === 9 ? '<div class="seg solid lenseg" id="nineseg">' + offered.map(function (k) {
+      return '<button data-a="pickNine" data-v="' + k + '" class="' + (k === nine ? 'on' : '') + '">' + NINE_LABEL[k] + '</button>';
+    }).join('') + '</div>' : '';
     openModal('<h2>Start round</h2><p class="muted">How do you want to play today? Each hole’s plan is set now and stays the same for the whole round.</p>' +
+      lenSeg + nineSeg +
+      '<p class="muted" id="startdh">' + (len === 9 ? NINE_LABEL[nine] + ' (holes ' + (nine === 'front' ? '1–9' : '10–18') + ', par ' + ninePar(nine) + ')' : '18 holes (par ' + coursePar() + ')') +
+        ' · daily handicap ' + (dh != null ? dh : '–') + '</p>' +
       '<div class="modepick">' + MODE_KEYS.map(function (k) {
         return '<button class="modeopt' + (k === m ? ' on' : '') + '" data-a="pickMode" data-v="' + k + '"><b>' + MODE_INFO[k][0] + '</b><span>' + MODE_INFO[k][1] + '</span></button>';
       }).join('') + '</div>' +
@@ -621,7 +675,7 @@
     }
     if (!c.touched.wasted) c.wasted = E.defaultWasted(c.putts);
     var r = cur();
-    c.strokes = E.strokesOnHole(roundDH(r), c.si);
+    c.strokes = holeStrokes(r, ui.holeIdx);   // v0.11: on a nine, the nine's own stroke order
     c.points = E.stablefordPoints(c.par, c.score, c.strokes);
   }
   function cardTotals() {
@@ -656,7 +710,8 @@
     }).join('');
     var NAMES = { '-3': 'ALBATROSS', '-2': 'EAGLE', '-1': 'BIRDIE', '0': 'PAR', '1': 'BOGEY', '2': 'DOUBLE' };
     var rname = NAMES[String(toPar)] || (toPar > 0 ? '+' + toPar : String(toPar));
-    var prog = cur().holes.map(function (h, i) { return '<span class="' + (i === ui.holeIdx ? 'now' : h.score != null ? 'done' : '') + '"></span>'; }).join('');
+    var rr = cur(), g = holeSpan(rr), nn = nineOf(rr);
+    var prog = rr.holes.slice(g[0], g[1]).map(function (h, k) { var i = g[0] + k; return '<span class="' + (i === ui.holeIdx ? 'now' : h.score != null ? 'done' : '') + '"></span>'; }).join('');
     return '<div class="photo cardhead"><img src="' + IMG.fairway + '" alt="">' +
       '<div class="over topbar"><button class="ibtn glass" data-a="backHole" aria-label="Back to hole">' + ic('left') + '</button>' +
       '<span class="tsub" style="color:#fff">Hole ' + n + ' · Par ' + c.par + ' · SI ' + c.si + '</span><span style="width:48px"></span></div>' +
@@ -664,7 +719,7 @@
       '<div class="score"><button class="circ" data-a="step" data-v="score:-1" aria-label="Score minus">−</button>' +
       '<span class="bigv">' + c.score + '</span><button class="circ plus" data-a="step" data-v="score:1" aria-label="Score plus">+</button></div>' +
       '<span class="line2">' + (c.strokes ? 'you get ' + strokesTxt + ' here' : 'no handicap stroke here') + ' · round ' + T.points + ' pts</span></div></div>' +
-      '<div class="progress" aria-label="Hole ' + n + ' of 18">' + prog + '</div>' +
+      '<div class="progress' + (nn ? ' nine' : '') + '" aria-label="Hole ' + n + ' of ' + (nn ? 'the ' + NINE_LABEL[nn].toLowerCase() : '18') + '">' + prog + '</div>' +
       '<div class="pad cardpad">' +
       cstep('putts', 'Putts', null, null, '<div class="pills">' + toggle('chip', 'Chip In', c.chipIn, true) + '<span class="pill">Total putts: <b>' + T.putts + '</b></span></div>') +
       fw +
@@ -688,10 +743,10 @@
     h.fairway = c.par >= 4 ? c.fairway : null; h.approach = c.approach; h.firstPutt = c.gir ? (c.firstPutt || null) : null;
     h.upDown = c.gir ? null : c.upDown; h.sandSave = c.sandSave; h.sand = c.sand; h.penalties = c.penalties; h.wasted = c.wasted;
     h.points = c.points;
-    r.done = r.holes.every(function (x) { return x.score != null; });
+    r.done = E.roundDone(r);   // v0.11: a 9-hole round is done when its nine is scored
     save();
-    if (ui.holeIdx < 17) { ui.holeIdx++; freshHoleUi(ui); go('hole'); }
-    else { ui.summaryId = r.id; go('summary'); }
+    if (ui.holeIdx < holeSpan(r)[1] - 1) { ui.holeIdx++; freshHoleUi(ui); go('hole'); }
+    else { ui.summaryId = r.id; go('summary'); }   // the last hole of the round (18, or the nine's last)
   }
 
   /* ---------- settings ---------- */
@@ -733,7 +788,19 @@
       '<label>Slope<input type="number" inputmode="numeric" data-set="slope" value="' + S.course.slope + '"></label>' +
       '<label>Scratch rating<input type="number" inputmode="decimal" step="0.1" data-set="scratch" value="' + S.course.scratch + '"></label></div></div>' +
       '<div class="tile dh"><div class="k">Daily handicap</div><div class="v" id="dhv">' + (dh != null ? dh : '–') + '</div>' +
-      '<div class="muted">(GA × slope ÷ 113 + (scratch − par ' + coursePar() + ')) × 0.93. Fixed for a round when it starts.</div></div>' +
+      '<div class="muted">(GA × slope ÷ 113 + (scratch − par ' + coursePar() + ')) × 0.93 × 0.9986, Golf Australia’s Consistency Factor. Fixed for a round when it starts.</div>' +
+      '<div class="dh9" id="dh9">' + ['front', 'back'].map(function (k) {
+        var d = currentDH9(k);
+        return '<div><span class="k">' + NINE_LABEL[k] + '</span><b id="dh9' + k + '">' + (d != null ? d : '–') + '</b><span class="muted">par ' + ninePar(k) + '</span></div>';
+      }).join('') + '</div></div>' +
+      '<h2>9-hole ratings</h2>' +
+      ['front', 'back'].map(function (k) {
+        var n = S.course.nines[k] || {};
+        return '<div class="bagrow"><div class="clubhead"><div class="club">' + NINE_LABEL[k] + ' <span class="muted">holes ' + (k === 'front' ? '1–9' : '10–18') + ' · par ' + ninePar(k) + '</span></div></div><div class="nums">' +
+          '<label>Slope<input type="number" inputmode="numeric" data-set="n9slope:' + k + '" value="' + (n.slope != null ? n.slope : '') + '"></label>' +
+          '<label>Scratch rating<input type="number" inputmode="decimal" step="0.5" data-set="n9scratch:' + k + '" value="' + (n.scratch != null ? n.scratch : '') + '"></label></div></div>';
+      }).join('') +
+      '<p class="muted">For 9-hole rounds, from MiScore’s 9-hole entries (Melville Blue 1-9 and 10-18). 9-hole daily handicap = (GA ÷ 2 × slope ÷ 113 + (scratch − par)) × 0.93 × 0.9986; strokes go on the nine’s lowest stroke indexes.</p>' +
       '<h2>Melville Glades holes</h2>' + (siOk ? '' : '<p class="warn">Stroke indexes must be 1–18, each used once.</p>') +
       '<table class="settab"><thead><tr><th>Hole</th><th>Par</th><th>Stroke index</th></tr></thead><tbody>' + rows + '</tbody></table>' +
       '<p class="muted">Blue Men tees, from your MiScore card (18 Oct 2026).</p>' +
@@ -748,6 +815,8 @@
     else if (p[0] === 'scratch') { if (!(v >= 55 && v <= 85)) return; S.course.scratch = Math.round(v * 10) / 10; }
     else if (p[0] === 'par') { if (!(v >= 3 && v <= 6)) return; S.course.pars[+p[1]] = Math.round(v); }
     else if (p[0] === 'si') { if (!(v >= 1 && v <= 18)) return; S.course.si[+p[1]] = Math.round(v); }
+    else if (p[0] === 'n9slope') { if (!E.nineRange(p[1]) || !(v >= 55 && v <= 155)) return; S.course.nines[p[1]].slope = Math.round(v); }
+    else if (p[0] === 'n9scratch') { if (!E.nineRange(p[1]) || !(v >= 25 && v <= 45)) return; S.course.nines[p[1]].scratch = Math.round(v * 10) / 10; }
     save(); render();
   });
 
@@ -773,14 +842,16 @@
         '<td>' + (h.par >= 4 && h.fairway ? fwMark[h.fairway] : '') + '</td><td>' + (st.gir ? '✓' : '') + '</td>' +
         '<td>' + (st.upDownAttempt ? (h.upDown ? '✓' : '✗') : '') + '</td><td>' + (h.penalties || '') + '</td><td>' + (h.wasted || '') + '</td></tr>';
     });
-    var rows = rowList.slice(0, 9).join('') + totRow('OUT', 0, 9) + rowList.slice(9).join('') + totRow('IN', 9, 18) + totRow('TOT', 0, 18);
+    var g = holeSpan(r), nine = nineOf(r);
+    var rows = nine ? rowList.slice(g[0], g[1]).join('') + totRow(nine === 'front' ? 'OUT' : 'IN', g[0], g[1]) + totRow('TOT', g[0], g[1])   // v0.11: 9 rows
+      : rowList.slice(0, 9).join('') + totRow('OUT', 0, 9) + rowList.slice(9).join('') + totRow('IN', 9, 18) + totRow('TOT', 0, 18);
     var grid = GRID.map(function (g) { return '<div class="gcell' + (g[0] === 'hit' ? ' hitc' : '') + '"><span>' + g[1] + '</span><b>' + s.miss[g[0]] + '</b></div>'; }).join('');
     return '<div class="photo sumhead"><img src="' + IMG.amen + '" alt="Stone bridge and par-3 green at the corner of the course" style="object-position:50% 40%">' +
       '<div class="over topbar"><button class="ibtn glass" data-a="home" aria-label="Home">' + ic('left') + '</button>' +
-      '<span class="tag white">' + ic('flag') + (r.tournament ? 'TOURNAMENT \u00b7 ' : '') + (r.done ? 'ROUND COMPLETE' : s.holes + ' OF 18 HOLES') + '</span>' +
+      '<span class="tag white">' + ic('flag') + (r.tournament ? 'TOURNAMENT \u00b7 ' : '') + (r.done ? 'ROUND COMPLETE' : s.holes + ' OF ' + (nine ? 9 : 18) + ' HOLES') + '</span>' +
       '<button class="ibtn glass" data-a="export" aria-label="Export backup">' + ic('save') + '</button></div>' +
       '<div class="over big"><div class="n"><b>' + (s.pointsHoles ? s.points : '–') + '</b><i>PTS</i></div>' +
-      '<div class="when">' + ((r.player || playerName()) ? esc(r.player || playerName()) + ' · ' : '') + esc(longDate(r.date)) + ' · Melville Glades</div></div></div>' +
+      '<div class="when">' + ((r.player || playerName()) ? esc(r.player || playerName()) + ' · ' : '') + esc(longDate(r.date)) + ' · Melville Glades' + (nine ? ' · ' + NINE_LABEL[nine] : '') + '</div></div></div>' +
       '<div class="pad"><div class="tiles">' +
       tile('Gross', s.holes ? s.score : '–', s.holes ? signed(s.toPar) + ' · daily hcp ' + roundDH(r) : 'daily hcp ' + roundDH(r)) +
       tile('Putts', s.putts, (s.puttsPerGir != null ? s.puttsPerGir + ' per GIR · ' : '') + s.chipIns + ' chip-ins') +
@@ -790,7 +861,7 @@
       tile('Sand saves', pc(s.sandPct), s.sandSaved + ' of ' + s.sandAtt + ' · ' + s.sandShots + ' sand shots') +
       tile('Wasted', s.wasted, 'shots') +
       tile('Penalties', s.penalties, 'shots') +
-      '</div>' + pointsChart(hs) +
+      '</div>' + pointsChart(hs.slice(g[0], g[1]), g[0] + 1) +
       '<h2>Approach shots</h2><div class="sumgrid">' + grid + '</div>' +
       '<h2>Putting from greens hit</h2>' + puttTableHtml(s.putting, 'sumputt') +
       '<h2>Hole by hole</h2><div class="tablebox"><table class="htab"><thead><tr><th>#</th><th>Par</th><th>Sc</th><th>Pts</th><th>Pt</th><th>FW</th><th>GIR</th><th>U&amp;D</th><th>Pen</th><th>Wst</th></tr></thead><tbody>' + rows + '</tbody></table></div>' +
@@ -814,9 +885,9 @@
     }).join('');
     return '<table class="anstats putttab"' + (id ? ' id="' + id + '"' : '') + '><thead><tr><th>First putt</th><th>Greens</th><th>Avg putts</th><th>1-putts</th><th>3-putts</th></tr></thead><tbody>' + rows + '</tbody></table>';
   }
-  function lastRoundsInput() { return S.rounds.map(function (r) { return { id: r.id, date: r.date, tournament: r.tournament, holes: holesWithPoints(r) }; }); }
-  function barsCard(a) {
-    var maxPts = Math.max.apply(null, a.rounds.map(function (r) { return r.pts; }).concat([36]));
+  function lastRoundsInput() { return S.rounds.map(function (r) { return { id: r.id, date: r.date, tournament: r.tournament, nine: nineOf(r), holes: holesWithPoints(r) }; }); }
+  function barsCard(a, target) {
+    var maxPts = Math.max.apply(null, a.rounds.map(function (r) { return r.pts; }).concat([target || 36]));
     var bars = a.rounds.map(function (r) {
       return '<div class="bar5"><span class="v">' + r.pts + '</span><span class="b" style="height:' + Math.max(6, Math.round(64 * r.pts / maxPts)) + 'px"></span>' +
         '<span class="d">' + esc(r.date.slice(8, 10) + '/' + r.date.slice(5, 7)) + (r.tournament ? '<i>T</i>' : '') + '</span></div>';
@@ -825,25 +896,50 @@
     return '<div class="card bars"><div class="bhead"><span>STABLEFORD</span><span>' + esc(trTxt) + '</span></div><div class="row5">' + bars + '</div></div>';
   }
   // v0.7 Home: chart + key numbers + top suggestion; tap for the full panel in Past rounds
+  /* v0.11 (decisions 2-4): Last 5 rounds (18 holes) and Last 5 nines, each hidden with no finished round of its length,
+     "Finish 1 more ..." with one, full with two or more */
   function home5Html() {
+    var a = E.analyseRounds(lastRoundsInput(), 5);
+    if (!a.count) return '';
     var head = '<div class="h5head"><span>LAST 5 ROUNDS</span>';
     if (!inRound('roundAnalysis')) return '<div class="h5 anal" id="home5">' + head + '</div><p class="muted">Available after your tournament round.</p></div>';
-    var a = E.analyseRounds(lastRoundsInput(), 5);
     if (!a.enough) return '<button class="h5 anal" data-a="past" id="home5">' + head + ic('right') + '</div><p class="muted">Finish ' + (2 - a.count) + ' more 18-hole round' + (a.count === 1 ? '' : 's') +
       ' to see your trends here. Imported MiScore rounds count.</p></button>';
+    return homeCard(a, head, 'home5', 36);
+  }
+  function home9Html() {
+    var a = E.analyseNines(lastRoundsInput(), 5);
+    if (!a.count) return '';
+    var head = '<div class="h5head"><span>LAST 5 NINES</span>';
+    if (!inRound('roundAnalysis')) return '<div class="h5 anal" id="home9">' + head + '</div><p class="muted">Available after your tournament round.</p></div>';
+    if (!a.enough) return '<button class="h5 anal" data-a="past" id="home9">' + head + ic('right') + '</div><p class="muted">Finish 1 more nine to see your trends here.</p></button>';
+    return homeCard(a, head, 'home9', 18);
+  }
+  function homeCard(a, head, id, target) {
     var A = a.avg;
     function k(label, v) { return '<div class="kn"><span class="k">' + label + '</span><b>' + v + '</b></div>'; }
     function pc(v) { return v == null ? '\u2013' : v + '%'; }
     var top = a.suggestions[0];
-    return '<button class="h5 anal" data-a="past" id="home5">' + head + '<span class="more">Details' + ic('right') + '</span></div>' + barsCard(a) +
+    return '<button class="h5 anal" data-a="past" id="' + id + '">' + head + '<span class="more">Details' + ic('right') + '</span></div>' + barsCard(a, target) +
       '<div class="knums">' + k('Points', A.pts) + k('Gross', A.gross) + k('Putts', A.putts) + k('Greens', pc(A.girPct)) + k('Fairways', pc(A.fwPct)) + '</div>' +
       (top ? '<div class="sug"><div class="n">1</div><div><b>' + esc(top.title) + '</b><span class="det">' + esc(top.detail) + '</span></div></div>'
            : '<p class="muted">No clear weak spot across these rounds. Enter fairways, greens and putts on the hole card for sharper suggestions.</p>') + '</button>';
   }
   function analysisHtml() {
-    if (!inRound('roundAnalysis')) return '<div class="anal"><h2>Last 5 rounds</h2><p class="muted" id="analhidden">Available after your tournament round.</p></div>';
     var a = E.analyseRounds(lastRoundsInput(), 5);
+    if (!a.count) return '';
+    if (!inRound('roundAnalysis')) return '<div class="anal"><h2>Last 5 rounds</h2><p class="muted" id="analhidden">Available after your tournament round.</p></div>';
     if (!a.enough) return '<div class="anal"><h2>Last 5 rounds</h2><p class="muted">Finish ' + (2 - a.count) + ' more 18-hole round' + (a.count === 1 ? '' : 's') + ' to see your trends and suggestions.</p></div>';
+    return panelHtml(a, 'anal', 'round', 36);
+  }
+  function analysis9Html() {
+    var a = E.analyseNines(lastRoundsInput(), 5);
+    if (!a.count) return '';
+    if (!inRound('roundAnalysis')) return '<div class="anal"><h2>Last 5 nines</h2><p class="muted" id="anal9hidden">Available after your tournament round.</p></div>';
+    if (!a.enough) return '<div class="anal" id="anal9"><h2>Last 5 nines</h2><p class="muted">Finish 1 more nine to see your trends and suggestions.</p></div>';
+    return panelHtml(a, 'anal9', 'nine', 18);
+  }
+  function panelHtml(a, id, unit, target) {
     var A = a.avg;
     function pc(v) { return v == null ? '\u2013' : v + '%'; }
     function row(k, v) { return '<tr><td>' + k + '</td><td><b>' + v + '</b></td></tr>'; }
@@ -853,12 +949,12 @@
       row('Sand saves', A.sandAtt ? pc(A.sandPct) : '\u2013') + row('Penalties', A.pen) + row('Wasted shots', A.wasted) + '</table>';
     var g9 = GRID.map(function (g) { return '<div class="gcell' + (g[0] === 'hit' ? ' hitc' : '') + '"><span>' + g[1] + '</span><b>' + A.miss[g[0]] + '</b></div>'; }).join('');
     var sug = a.suggestions.length ? a.suggestions.map(function (x, i) {
-      return '<div class="sug"><div class="n">' + (i + 1) + '</div><div><b>' + esc(x.title) + '</b><span class="det">' + esc(x.detail) + ' \u00b7 about ' + x.shots + ' shot' + (x.shots === 1 ? '' : 's') + ' a round</span>' +
+      return '<div class="sug"><div class="n">' + (i + 1) + '</div><div><b>' + esc(x.title) + '</b><span class="det">' + esc(x.detail) + ' \u00b7 about ' + x.shots + ' shot' + (x.shots === 1 ? '' : 's') + ' a ' + unit + '</span>' +
         '<span class="tip">' + esc(x.tip) + '</span></div></div>';
     }).join('') : '<p class="muted">No clear weak spot across these rounds \u2013 keep doing what you\u2019re doing.</p>';
-    return '<div class="anal" id="anal"><h2>Last ' + a.count + ' rounds</h2>' +
-      barsCard(a) +
-      '<h3 class="anh">Averages per round</h3>' + stats +
+    return '<div class="anal" id="' + id + '"><h2>Last ' + a.count + ' ' + unit + 's</h2>' +
+      barsCard(a, target) +
+      '<h3 class="anh">Averages per ' + unit + '</h3>' + stats +
       '<h3 class="anh">Putting from greens hit</h3>' + puttTableHtml(A.putting, 'anputt') +
       '<h3 class="anh">Where your approaches finished</h3><div class="sumgrid">' + g9 + '</div>' +
       '<h3 class="anh">Suggested improvements</h3>' + sug + '</div>';
@@ -867,10 +963,10 @@
     var list = S.rounds.slice().reverse().map(function (r) {
       var s = E.roundSummary(r.holes);
       return '<button class="btn small" data-a="openRound" data-v="' + esc(r.id) + '">' + (r.tournament ? 'Tournament \u00b7 ' : '') + esc(r.date) + ' · ' +
-        (s.holes ? s.score + ' (' + signed(s.toPar) + ') over ' + s.holes + ' holes' : 'not started') + '</button>';
+        (s.holes ? s.score + ' (' + signed(s.toPar) + ') over ' + s.holes + ' holes' : 'not started') + (nineOf(r) ? ' \u00b7 ' + NINE_LABEL[r.nine] : '') + '</button>';
     }).join('');
     return '<div class="bar"><div class="nav"><button class="arrow" data-a="home" aria-label="Home">⌂</button><div class="title">Past rounds</div><span style="width:56px"></span></div></div>' +
-      '<div class="pad">' + analysisHtml() + '<h2>Rounds</h2>' + (list || '<p class="sub">No rounds yet.</p>') +
+      '<div class="pad">' + analysisHtml() + analysis9Html() + '<h2>Rounds</h2>' + (list || '<p class="sub">No rounds yet.</p>') +
       '<h2>Import scores</h2><p class="muted">Load a Caddy4Me scores file (e.g. from your MiScore card). It updates strokes, putts and Stableford points for that date and keeps the other stats you entered.</p>' +
       '<p class="warn" id="impmsg">' + esc(ui.importMsg || '') + '</p>' +
       '<label class="btn small primary filebtn">Choose scores file<input type="file" id="impfile" hidden></label></div>';
@@ -885,18 +981,21 @@
         ui.importMsg = 'That isn\u2019t a Caddy4Me scores file. Choose the .json scores file.'; render(); return;
       }
       var r = S.rounds.filter(function (x) { return x.date === f.date; })[0];
-      var created = false;
+      var created = false, nine = null;
       if (!r) {
         var holes = [];
         for (var i = 0; i < 18; i++) holes.push({ n: i + 1, par: S.course.pars[i], si: S.course.si[i], score: null, putts: null, approach: null, upDown: null, sand: 0, penalties: 0, wasted: 0 });
         r = { id: f.date + 'T00:00:00.000Z', date: f.date, ground: 'normal', holes: holes, done: false };
+        // v0.11: a new date with scores on exactly holes 1-9 or 10-18 is a 9-hole round on that nine (its own daily handicap)
+        nine = E.scoresNine(f);
+        if (nine) { r.nine = nine; r.dailyHcp = currentDH9(nine); }
         S.rounds.push(r); created = true;
       }
       var n = E.mergeScores(r, f);
       save();
       ui.importMsg = '';
       ui.summaryId = r.id; go('summary');
-      setTimeout(function () { alertBanner((created ? 'Added' : 'Updated') + ' round ' + f.date + ' \u2013 ' + n + ' holes from ' + (f.source || 'file')); }, 30);
+      setTimeout(function () { alertBanner((created ? 'Added' : 'Updated') + ' round ' + f.date + ' \u2013 ' + n + ' holes from ' + (f.source || 'file') + (nine ? ' (' + NINE_LABEL[nine].toLowerCase() + ')' : '')); }, 30);
     };
     rd.readAsText(file);
   }
@@ -1002,14 +1101,20 @@
   /* ---------- actions ---------- */
   var A = {
     home: function () { go('home'); },
-    newRound: function () { ui.startMode = stratMode(); startModal(); },
+    newRound: function () { ui.startMode = stratMode(); startDefaults(); startModal(); },
     resume: function () { var r = cur(); if (!r) return; ui.holeIdx = firstOpenHole(r); freshHoleUi(ui); go('hole'); },
     bag: function () { ui.confirmDelClub = null; ui.clubMsg = ''; go('bag'); },
     strategy: function () { go('strategy'); },
     stratMode: function (v) { if (MODE_KEYS.indexOf(v) < 0) return; S.settings.strategyMode = v; save(); var y = window.scrollY; render(); window.scrollTo(0, y); },
     plan: planModal,
     pickMode: function (v) { ui.startMode = v; startModal(); },
-    startRound: function () { var m = ui.startMode || stratMode(); closeModal(); newRound(m); },
+    pickLen: function (v) { ui.startLen = +v === 9 ? 9 : 18; startModal(); },
+    pickNine: function (v) { if (nineRating(v)) ui.startNine = v; startModal(); },
+    startRound: function () {
+      var m = ui.startMode || stratMode(), offered = ninesOffered();
+      var nine = ui.startLen === 9 && offered.length ? (offered.indexOf(ui.startNine) >= 0 ? ui.startNine : offered[0]) : null;
+      closeModal(); newRound(m, nine);
+    },
     addClub: function () {
       var name = $('ncName').value.trim().slice(0, 24), carry = Math.round(+$('ncCarry').value), total = Math.round(+$('ncTotal').value);
       var p34 = Math.round(+$('ncP34').value), p12 = Math.round(+$('ncP12').value);

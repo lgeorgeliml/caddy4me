@@ -121,5 +121,17 @@ t('a book aim line wins: Melville hole 4 points uses the book aim, never aim-awa
   const h = hole(build({ mode: 'points' }), 4); ok(/aim right-centre/.test(h.shots[0].text), h.shots[0].text); ok(!/away from/.test(h.shots[0].text)); });
 t('Melville book: no plan in any mode says "away from the"', () => ['bogey', 'points', 'attack'].forEach(m => ok(build({ mode: m }).holes.every(h => h.shots.every(x => !/away from the/.test(x.text))), m)));
 
+// ---------- v0.11: a plan for one nine (golf cases 1.7.0) ----------
+const nine = (n9, dh, o) => build(Object.assign({ nine: n9, dailyHcp: dh, strokesOnNine: E.strokesOnNine }, o || {}));
+t('back nine plan: 9 holes numbered 10-18', () => { const p = nine('back', 8); eq(p.holes.length, 9); eq(p.holes.map(h => h.n).join(','), '10,11,12,13,14,15,16,17,18'); eq(p.nine, 'back'); });
+t('back nine at 8: a shot everywhere except hole 15 (SI 17)', () => eq(nine('back', 8).holes.map(h => h.strokes).join(''), '111110111'));
+t('front nine at 9: a shot on every hole, so hole 5 targets bogey too', () => { const p = nine('front', 9); ok(p.holes.every(h => h.strokes === 1)); eq(p.holes[4].target, 4); });
+t('a nine plays each hole as the 18-hole plan does with the same strokes', () => {
+  const p9 = nine('front', 8, { mode: 'points' }), p18 = build({ mode: 'points', dailyHcp: 17 });
+  p9.holes.forEach(h => { const h18 = hole(p18, h.n); eq(JSON.stringify(h.shots), JSON.stringify(h18.shots), 'hole ' + h.n); eq(h.strokes, h18.strokes, 'hole ' + h.n); });
+});
+t('without strokesOnNine the plan uses the same ranking', () => eq(build({ nine: 'back', dailyHcp: 8 }).holes.map(h => h.strokes).join(''), '111110111'));
+t('no nine (or an unknown one): the 18-hole plan, with no nine field', () => { const p = build({ nine: 'middle' }); eq(p.holes.length, 18); ok(!('nine' in p)); ok(!('nine' in sb)); });
+
 console.log(pass + ' passed, ' + fail + ' failed');
 process.exit(fail ? 1 : 0);

@@ -51,6 +51,9 @@
     oldSi: [13, 14, 3, 7, 16, 5, 8, 11, 9, 2, 12, 1, 15, 17, 4, 6, 18, 10], // v0.2 Offcourse values, replaced
     slope: 124, scratch: 72
   };
+  /* v0.11: Melville Glades Blue Men 9-hole ratings, checked in MiScore 25 Nov 2026 (CAD-39: "Melville Blue 1-9" / "10-18").
+     Kept apart from COURSE so the shared course-par-si fixture stays as it was. Editable in Settings; par comes from the hole pars. */
+  var COURSE_NINES = { front: { slope: 127, scratch: 36 }, back: { slope: 121, scratch: 36 } };
   // v0.7: first putt length on greens hit in regulation
   var PUTT_BANDS = [['0-3', '0\u20133 m'], ['3-6', '3\u20136 m'], ['6-10', '6\u201310 m'], ['10-20', '10\u201320 m'], ['20+', '20 m+']];
   function puttTable() { var t = {}; PUTT_BANDS.forEach(function (b) { t[b[0]] = { n: 0, putts: 0, one: 0, three: 0 }; }); return t; }
@@ -209,10 +212,52 @@
     res.down = dn ? { name: dn.club.name, swing: dn.swing, E: r0(dn.E) } : null;
   }
 
-  /* ---------- Stableford (Golf Australia) ---------- */
-  function dailyHandicap(ga, slope, scratch, par) {
+  /* ---------- Stableford (Golf Australia) ----------
+   * v0.11 (golf cases 1.7.0): Golf Australia's 2024 Consistency Factor on every daily handicap, 18 and 9 holes.
+   * factor 'women' = 1.0483 (women and girls); anything else, or missing, = 0.9986 (men and boys).
+   * Worked as ((...) x 0.93) x factor, then rounded, in that order in both apps. */
+  var CF = { men: 0.9986, women: 1.0483 };
+  function consistencyFactor(factor) { return factor === 'women' ? CF.women : CF.men; }
+  function dailyHandicap(ga, slope, scratch, par, factor) {
     if (ga == null || isNaN(ga)) return null;
-    return Math.round((ga * slope / 113 + (scratch - par)) * 0.93);
+    return Math.round((ga * slope / 113 + (scratch - par)) * 0.93 * consistencyFactor(factor));
+  }
+  /* GA's 9-hole Daily Handicap (Appendix B): half the handicap index on the nine's own slope, scratch and par. */
+  function dailyHandicap9(ga, slope9, scratch9, par9, factor) {
+    if (ga == null || isNaN(ga)) return null;
+    return Math.round(((ga / 2) * slope9 / 113 + (scratch9 - par9)) * 0.93 * consistencyFactor(factor));
+  }
+  /* The holes of a nine: 'front' = holes 1-9 (index 0-8), 'back' = holes 10-18. A 9-hole course's one time round is 'front'. */
+  var NINES = { front: [0, 9], back: [9, 18] };
+  function nineRange(nine) { return NINES.hasOwnProperty(nine) ? NINES[nine] : null; }
+  /* Strokes on each hole of a nine (spec default 11). The nine's holes are ranked by their 18-hole stroke index
+   * (rank 1 = lowest SI; equal SIs keep their order), then the 18-hole rule runs on 9 holes: floor(DH / 9) on every hole,
+   * plus one on ranks 1 to (DH mod 9). A plus handicap gives strokes back from rank 9 upwards. A hole with no SI gets none. */
+  function strokesOnNine(dh, sis) {
+    sis = sis || [];
+    return sis.map(function (s, i) {
+      if (dh == null || !s) return 0;
+      var rank = 1;
+      sis.forEach(function (x, j) { if (x && (x < s || (x === s && j < i))) rank++; });
+      if (dh >= 0) return Math.floor(dh / 9) + (rank <= dh % 9 ? 1 : 0);
+      var plus = -dh;
+      return -(Math.floor(plus / 9) + (rank > 9 - plus % 9 ? 1 : 0));
+    });
+  }
+  /* A scores file that covers exactly one nine: scores on holes 1-9 only ('front') or 10-18 only ('back'), else null. */
+  function scoresNine(file) {
+    var seen = {};
+    (file && file.holes || []).forEach(function (h) { if (h && h.score != null) seen[h.n] = true; });
+    var ns = Object.keys(seen).map(Number).sort(function (a, b) { return a - b; }).join(',');
+    if (ns === '1,2,3,4,5,6,7,8,9') return 'front';
+    if (ns === '10,11,12,13,14,15,16,17,18') return 'back';
+    return null;
+  }
+  /* A round is done when every hole it is played on has a score: the 18, or the holes of its nine. */
+  function roundDone(round) {
+    var g = nineRange(round.nine), hs = round.holes || [];
+    return g ? hs.length >= g[1] && hs.slice(g[0], g[1]).every(function (x) { return x && x.score != null; })
+             : hs.every(function (x) { return x.score != null; });
   }
   function strokesOnHole(dh, si) {
     if (dh == null || !si) return 0;
@@ -237,7 +282,7 @@
       n++;
     });
     if (file.dailyHcp != null) round.dailyHcp = file.dailyHcp;
-    round.done = round.holes.every(function (x) { return x.score != null; });
+    round.done = roundDone(round);   // v0.11: a 9-hole round is done when its nine is scored
     round.source = file.source || 'import';
     return n;
   }
@@ -309,19 +354,29 @@
    * Counts finished 18-hole rounds only; needs at least 2. Fixed rules, no AI.
    */
   var MISS_SHORT = ['short', 'shortLeft', 'shortRight'], MISS_LEFT = ['left', 'longLeft', 'shortLeft'], MISS_RIGHT = ['right', 'longRight', 'shortRight'];
-  function analyseRounds(rounds, n) {
+  /* v0.11: finished 18-hole rounds feed Last 5 rounds; finished 9-hole rounds (round.nine set) feed Last 5 nines. */
+  function finished18(r) { return !r.nine && r.holes && r.holes.length >= 18 && r.holes.slice(0, 18).every(function (h) { return h.score != null; }); }
+  function finishedNine(r) { var g = nineRange(r.nine); return !!g && !!r.holes && r.holes.length >= g[1] && r.holes.slice(g[0], g[1]).every(function (h) { return h.score != null; }); }
+  function analyseRounds(rounds, n) { return analyse((rounds || []).filter(finished18), n, 1, 'round'); }
+  /* Last 5 nines (spec default 16): the same panel on 9-hole rounds, front and back mixed. Every per-round level is halved
+   * (three-putts 2 -> 1 a nine, penalties 2 -> 1, wasted 4 -> 2, and the baselines the estimates subtract); minimum counts stay. */
+  function analyseNines(rounds, n) { return analyse((rounds || []).filter(finishedNine), n, 0.5, 'nine'); }
+  function analyse(finished, n, L, unit) {
     n = n || 5;
-    var done = (rounds || []).filter(function (r) { return r.holes && r.holes.length >= 18 && r.holes.slice(0, 18).every(function (h) { return h.score != null; }); })
+    var done = finished
       .sort(function (a, b) { return (a.date + a.id) < (b.date + b.id) ? 1 : -1; }).slice(0, n).reverse();   // oldest -> newest
     var res = { count: done.length, enough: done.length >= 2, rounds: [], avg: null, suggestions: [] };
     if (!res.enough) return res;
     var T = { pts: 0, gross: 0, toPar: 0, putts: 0, three: 0, gir: 0, girPutts: 0, stat: 0, fw: 0, fwHit: 0, ud: 0, udMade: 0, sa: 0, ss: 0, pen: 0, wst: 0, miss: {}, putting: puttTable() };
     APPROACH9.forEach(function (k) { T.miss[k] = 0; });
     done.forEach(function (r) {
-      var s = roundSummary(r.holes);
-      var three = r.holes.filter(function (h) { return !h.pickup && (h.putts || 0) >= 3; }).length;
-      res.rounds.push({ id: r.id, date: r.date, tournament: !!r.tournament, pts: s.points, gross: s.score, toPar: s.toPar, putts: s.putts, three: three,
-        girPct: s.girPct, fwPct: s.fwPct, udPct: s.udPct });
+      var g = nineRange(r.nine), hs = g ? r.holes.slice(g[0], g[1]) : r.holes;
+      var s = roundSummary(hs);
+      var three = hs.filter(function (h) { return !h.pickup && (h.putts || 0) >= 3; }).length;
+      var row = { id: r.id, date: r.date, tournament: !!r.tournament, pts: s.points, gross: s.score, toPar: s.toPar, putts: s.putts, three: three,
+        girPct: s.girPct, fwPct: s.fwPct, udPct: s.udPct };
+      if (g) row.nine = r.nine;
+      res.rounds.push(row);
       T.pts += s.points; T.gross += s.score; T.toPar += s.toPar; T.putts += s.putts; T.three += three; T.gir += s.gir; T.girPutts += s.girPutts; T.stat += s.statHoles;
       T.fw += s.fw; T.fwHit += s.fwHit; T.ud += s.ud; T.udMade += s.udMade; T.sa += s.sandAtt; T.ss += s.sandSaved; T.pen += s.penalties; T.wst += s.wasted;
       APPROACH9.forEach(function (k) { T.miss[k] += s.miss[k]; });
@@ -344,7 +399,7 @@
     res.trend = { pts: one(last.pts - earlier.reduce(function (a, r) { return a + r.pts; }, 0) / earlier.length) };
     var S = [];
     function add(key, est, title, detail, tip) { if (est > 0) S.push({ key: key, shots: Math.round(est * 10) / 10, title: title, detail: detail, tip: tip }); }
-    if (A.three >= 2) add('threeputt', A.three - 1, 'Three-putts', A.three + ' three-putts a round',
+    if (A.three >= 2 * L) add('threeputt', A.three - 1 * L, 'Three-putts', A.three + ' three-putts a ' + unit,
       'Lag putting: practise 10–15 m putts to finish within a club length.');
     // v0.7 putting-by-distance rules (greens hit with a first-putt length recorded)
     var P = T.putting, long = { n: P['10-20'].n + P['20+'].n, three: P['10-20'].three + P['20+'].three };
@@ -366,9 +421,9 @@
       'Chipping practice: get the ball on the green and within 2 m.');
     if (T.sa >= 3 && A.sandPct < 20) add('sand', (0.3 - A.sandPct / 100) * (T.sa / N), 'Sand saves', A.sandPct + '% sand saves',
       'Greenside bunker practice: splash out onto the green first time.');
-    if (A.pen >= 2) add('penalty', A.pen - 1, 'Penalty shots', A.pen + ' penalty shots a round',
+    if (A.pen >= 2 * L) add('penalty', A.pen - 1 * L, 'Penalty shots', A.pen + ' penalty shots a ' + unit,
       'Course management: aim away from trouble and take the penalty-free side.');
-    if (A.wasted >= 4) add('wasted', A.wasted - 2, 'Wasted shots', A.wasted + ' wasted shots a round',
+    if (A.wasted >= 4 * L) add('wasted', A.wasted - 2 * L, 'Wasted shots', A.wasted + ' wasted shots a ' + unit,
       'Pre-shot routine and tempo to cut duffs and chips that don’t reach the green.');
     S.sort(function (a, b) { return b.shots - a.shots; });
     res.suggestions = S.slice(0, 3);
@@ -378,6 +433,8 @@
   var api = {
     K: K, LIES: LIES, DEFAULT_BAG: DEFAULT_BAG, COURSE: COURSE, APPROACH9: APPROACH9, PUTT_BANDS: PUTT_BANDS, clone: clone,
     dailyHandicap: dailyHandicap, mergeScores: mergeScores, analyseRounds: analyseRounds, strokesOnHole: strokesOnHole, stablefordPoints: stablefordPoints, normApproach: normApproach,
+    COURSE_NINES: COURSE_NINES, CF: CF, consistencyFactor: consistencyFactor, dailyHandicap9: dailyHandicap9, strokesOnNine: strokesOnNine, nineRange: nineRange, scoresNine: scoresNine,
+    roundDone: roundDone, analyseNines: analyseNines,
     distanceM: distanceM, bearingDeg: bearingDeg,
     windFromLive: windFromLive, windFromRelative: windFromRelative, windLabel: windLabel,
     recommend: recommend, swingWord: swingWord,

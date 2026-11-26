@@ -1,4 +1,4 @@
-/* Caddy4Me course strategy v0.6 (v0.9: bags with no wedge)
+/* Caddy4Me course strategy v0.6 (v0.9: bags with no wedge; v0.11: a plan for one nine)
  * Builds an 18-hole game plan from the yardage book, My Bag, past rounds and handicap shots.
  * Three modes: 'bogey' (Smart Bogey Golf), 'points' (Stableford Points), 'attack' (Attacking).
  * Pure functions: browser (window.C4MStrategy) and Node (module.exports). No live data is used,
@@ -292,7 +292,23 @@
     return 'Pick a small target on every shot and commit to it.';
   }
 
-  /* ---------- whole course ---------- */
+  /* strokes on each hole of a nine: the nine's holes ranked by 18-hole SI, then the 18-hole rule on 9 holes
+     (the same rule as engine.js strokesOnNine, used when the caller doesn't pass it) */
+  function nineStrokes(dh, sis) {
+    return sis.map(function (s, i) {
+      if (dh == null || !s) return 0;
+      var rank = 1;
+      sis.forEach(function (x, j) { if (x && (x < s || (x === s && j < i))) rank++; });
+      if (dh >= 0) return Math.floor(dh / 9) + (rank <= dh % 9 ? 1 : 0);
+      var plus = -dh;
+      return -(Math.floor(plus / 9) + (rank > 9 - plus % 9 ? 1 : 0));
+    });
+  }
+  var NINE_HOLES = { front: [0, 9], back: [9, 18] };
+
+  /* ---------- whole course ----------
+   * v0.11 (golf cases 1.7.0): opts.nine 'front' or 'back' builds the plan for that nine only (9 holes, numbered as on the card),
+   * with opts.dailyHcp the 9-hole daily handicap and its strokes from opts.strokesOnNine. The rules for each hole are unchanged. */
   function buildStrategy(opts) {
     var book = opts.book, mode = MODES[opts.mode] ? opts.mode : 'bogey';
     var clubs = usable(opts.bag);
@@ -301,13 +317,18 @@
     var pars = opts.pars || [], si = opts.si || [];
     var rounds = (opts.rounds || []).filter(function (r) { return r && r.holes && r.holes.some(function (h) { return h && h.score != null; }); });
     var strokesOnHole = opts.strokesOnHole || function (dh, x) { return dh == null || !x ? 0 : Math.floor(dh / 18) + (x <= dh % 18 ? 1 : 0); };
-    var holes = book.holes.map(function (bh, i) {
-      var h = Object.assign({}, bh, { par: pars[i] || bh.par, si: si[i] || bh.si });
-      var s = strokesOnHole(opts.dailyHcp, h.si);
+    var range = NINE_HOLES.hasOwnProperty(opts.nine) ? NINE_HOLES[opts.nine] : null;
+    var card = book.holes.map(function (bh, i) { return Object.assign({}, bh, { par: pars[i] || bh.par, si: si[i] || bh.si }); });
+    if (range) card = card.slice(range[0], range[1]);
+    var onNine = range ? (opts.strokesOnNine || nineStrokes)(opts.dailyHcp, card.map(function (h) { return h.si; })) : null;
+    var holes = card.map(function (h, k) {
+      var s = range ? onNine[k] : strokesOnHole(opts.dailyHcp, h.si);
       return planHole(h, { mode: mode, clubs: clubs, wedge: wedge, strokes: s, thoughts: opts.thoughts, noElevation: !!opts.noElevation,
         history: holeHistory(rounds, h.n, opts.dailyHcpFor, strokesOnHole) });
     });
-    return { v: 1, mode: mode, modeLabel: MODES[mode].label, bagSig: bagSignature(opts.bag), rounds: rounds.length, dailyHcp: opts.dailyHcp, noElevation: !!opts.noElevation, holes: holes };
+    var out = { v: 1, mode: mode, modeLabel: MODES[mode].label, bagSig: bagSignature(opts.bag), rounds: rounds.length, dailyHcp: opts.dailyHcp, noElevation: !!opts.noElevation, holes: holes };
+    if (range) out.nine = opts.nine;
+    return out;
   }
 
   var api = { MODES: MODES, buildStrategy: buildStrategy, bagSignature: bagSignature, holeHistory: holeHistory, shortName: shortName, usable: usable };

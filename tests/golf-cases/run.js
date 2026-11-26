@@ -27,15 +27,26 @@ if (fs.existsSync(path.join(DIR, 'fixtures', 'book-melville-glades-map.json'))) 
 // 1.5.0: the Perth course books (fixtures/course-books.json; older case sets don't have it)
 if (fs.existsSync(path.join(DIR, 'fixtures', 'course-books.json'))) load('fixtures/course-books.json').books.forEach(cb => { BOOKS[cb.book] = load('fixtures/book-' + cb.book + '.json'); });
 const PARSI = load('fixtures/course-par-si.json');
+// 1.7.0: 9-hole rounds (older case sets don't have them)
+const NINES = fs.existsSync(path.join(DIR, 'fixtures', 'nines.json')) ? load('fixtures/nines.json') : {};
 
 const r1 = x => Math.round(x * 10) / 10;
 const r2 = x => Math.round(x * 100) / 100;
 const hole = (course, n) => C.hole(COURSES[course], n);
 const stratCache = {};
+// the rounds an analysis case gives: 18-hole rounds (rounds) and, from 1.7.0, 9-hole rounds (nineRounds)
+const mixed = i => (i.rounds || []).map(k => ROUNDS[k]).concat((i.nineRounds || []).map(k => NINES[k]));
+function analysisOut(a) {
+  const o = { count: a.count, enough: a.enough };
+  if (a.enough) { o.roundsUsed = a.rounds.map(r => r.date); o.avg = a.avg; o.trendPts = a.trend.pts; o.suggestions = a.suggestions.map(x => ({ key: x.key, shots: x.shots })); }
+  return o;
+}
 
 const FN = {
-  dailyHandicap: i => E.dailyHandicap(i.ga, i.slope, i.scratch, i.par),
+  dailyHandicap: i => E.dailyHandicap(i.ga, i.slope, i.scratch, i.par, i.factor),
+  dailyHandicap9: i => E.dailyHandicap9(i.ga, i.slope, i.scratch, i.par, i.factor),
   strokesOnHole: i => E.strokesOnHole(i.dailyHcp, i.si),
+  strokesOnNine: i => E.strokesOnNine(i.dailyHcp, i.si),
   stablefordPoints: i => E.stablefordPoints(i.par, i.score, i.strokes),
   windFromLive: i => { const w = E.windFromLive(i.speedKmh, i.fromDeg, i.shotBearingDeg); return { head: r2(w.head), cross: r2(w.cross) }; },
   recommend: i => {
@@ -43,26 +54,26 @@ const FN = {
     return { club: r.club.name, swing: r.swing, playsLike: r.playsLike, up: r.up ? r.up.name : null, down: r.down ? r.down.name : null, hasWarning: !!r.warning, hasAim: !!r.aim };
   },
   holeStats: i => E.holeStats(ROUNDS[i.round].holes[i.hole - 1]),
-  roundSummary: i => { const hs = ROUNDS[i.round].holes; return E.roundSummary(i.holes ? hs.slice(i.holes[0] - 1, i.holes[1]) : hs); },
-  analyseRounds: i => {
-    const a = E.analyseRounds(i.rounds.map(k => ROUNDS[k]), i.n);
-    const o = { count: a.count, enough: a.enough };
-    if (a.enough) { o.roundsUsed = a.rounds.map(r => r.date); o.avg = a.avg; o.trendPts = a.trend.pts; o.suggestions = a.suggestions.map(x => ({ key: x.key, shots: x.shots })); }
-    return o;
+  roundSummary: i => {
+    if (i.nineRound) return E.roundSummary(NINES[i.nineRound].holes);   // 1.7.0
+    const hs = ROUNDS[i.round].holes; return E.roundSummary(i.holes ? hs.slice(i.holes[0] - 1, i.holes[1]) : hs);
   },
+  analyseRounds: i => analysisOut(E.analyseRounds(mixed(i), i.n)),
+  analyseNines: i => analysisOut(E.analyseNines(mixed(i), i.n)),
   greenFMB: i => { const f = C.greenFMB(i.player, hole(i.course, i.hole)); return { front: r1(f.front), middle: r1(f.middle), back: r1(f.back), inside: f.inside }; },
   bunkersAhead: i => C.bunkersAhead(i.player, hole(i.course, i.hole), i.max).map(x => ({ reach: r1(x.reach), carry: r1(x.carry), nearGreen: x.nearGreen })),
   holeBearing: i => r1(C.holeBearing(hole(i.course, i.hole))),
   rulesAllows: i => RU.allows(i.ruleSet, i.feature),
   'buildStrategy.hole': i => {
-    const key = [i.book, i.bag, i.mode, i.dailyHcp, i.rounds, i.noElevation, i.parsSi].join('|');
+    const key = [i.book, i.bag, i.mode, i.dailyHcp, i.rounds, i.noElevation, i.parsSi, i.nine].join('|');
     if (!stratCache[key]) {
       const sets = { none: [], miscore: Object.keys(ROUNDS).filter(k => k.startsWith('miscore')), all: Object.keys(ROUNDS) };
       const ownCard = i.parsSi === 'book'; // 1.5.0: the book's own pars and stroke indexes
       stratCache[key] = ST.buildStrategy({ book: BOOKS[i.book], bag: BAGS[i.bag], mode: i.mode, dailyHcp: i.dailyHcp, pars: ownCard ? [] : PARSI.pars, si: ownCard ? [] : PARSI.si,
-        rounds: sets[i.rounds].map(k => ROUNDS[k]), strokesOnHole: E.strokesOnHole, dailyHcpFor: r => r.dailyHcp, thoughts: [], noElevation: i.noElevation });
+        rounds: sets[i.rounds].map(k => ROUNDS[k]), strokesOnHole: E.strokesOnHole, dailyHcpFor: r => r.dailyHcp, thoughts: [], noElevation: i.noElevation,
+        nine: i.nine, strokesOnNine: E.strokesOnNine });   // 1.7.0: a plan for one nine has only that nine's holes
     }
-    const h = stratCache[key].holes[i.hole - 1];
+    const h = stratCache[key].holes.filter(x => x.n === i.hole)[0];
     return Object.assign({}, h, { shots: h.shots.map(x => ({ kind: x.kind, club: x.club })) });
   }
 };

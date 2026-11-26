@@ -436,3 +436,11 @@ ul.danger { margin: 4px 0 8px; padding-left: 20px; color: var(--soft2); font-siz
 .kn .k { font-size: 10px; font-weight: 800; letter-spacing: .08em; text-transform: uppercase; color: var(--muted); }
 .kn b { font-size: 18px; font-variant-numeric: tabular-nums; }
 .h5 .sug { margin: 0; background: var(--card2); }
+/* v0.11: 9-hole rounds - Start round length and nine choice, 9-hole daily handicaps in Settings */
+.sheet .lenseg { display: flex; width: 100%; margin: 10px 0 0; }
+.sheet .lenseg button { flex: 1; min-height: 48px; padding: 0 8px; }
+#startdh { margin: 10px 0 0; }
+.dh9 { display: flex; justify-content: center; gap: 28px; margin-top: 10px; }
+.dh9 > div { display: flex; flex-direction: column; align-items: center; gap: 2px; }
+.dh9 b { font-size: 28px; font-weight: 900; color: var(--accent); }
+.dh9 .muted { font-size: 12px; }

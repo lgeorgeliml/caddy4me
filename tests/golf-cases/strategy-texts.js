@@ -39,13 +39,17 @@ const CONFIGS = [
   { book: 'melville-glades-map', mode: 'bogey', bag: 'no-hybrid', dailyHcp: 17, rounds: 'none', noElevation: false, thoughts: [] },
   // golf cases 1.5.0: two Perth course books, with their own pars and stroke indexes (parsSi: 'book')
   { book: 'point-walter', parsSi: 'book', mode: 'points', bag: 'default', dailyHcp: 14, rounds: 'none', noElevation: false, thoughts: [] },
-  { book: 'collier-park-pines-island', parsSi: 'book', mode: 'attack', bag: 'long-hitter', dailyHcp: 17, rounds: 'none', noElevation: false, thoughts: ['Commit'] }
+  { book: 'collier-park-pines-island', parsSi: 'book', mode: 'attack', bag: 'long-hitter', dailyHcp: 17, rounds: 'none', noElevation: false, thoughts: ['Commit'] },
+  // v0.11 / golf cases 1.7.0: plans on a nine (input nine; dailyHcp is the 9-hole daily handicap; 9 holes, numbered as on the card)
+  { nine: 'back', mode: 'points', bag: 'default', dailyHcp: 8, rounds: 'all', noElevation: false, thoughts: ['Smooth tempo'] },
+  { book: 'point-walter', parsSi: 'book', nine: 'front', mode: 'bogey', bag: 'default', dailyHcp: 6, rounds: 'none', noElevation: false, thoughts: [] }
 ];
 
 const configs = CONFIGS.filter(c => BAGS[c.bag] && BOOKS[c.book || 'melville-glades']).map(input => {
   const ownCard = input.parsSi === 'book';
   const p = ST.buildStrategy({ book: BOOKS[input.book || 'melville-glades'], bag: BAGS[input.bag], mode: input.mode, dailyHcp: input.dailyHcp, pars: ownCard ? [] : PARSI.pars, si: ownCard ? [] : PARSI.si,
-    rounds: sets[input.rounds].map(k => ROUNDS[k]), strokesOnHole: E.strokesOnHole, dailyHcpFor: r => r.dailyHcp, thoughts: input.thoughts, noElevation: input.noElevation });
+    rounds: sets[input.rounds].map(k => ROUNDS[k]), strokesOnHole: E.strokesOnHole, dailyHcpFor: r => r.dailyHcp, thoughts: input.thoughts, noElevation: input.noElevation,
+    nine: input.nine, strokesOnNine: E.strokesOnNine });
   return { input, modeLabel: p.modeLabel, bagSig: p.bagSig, rounds: p.rounds,
     holes: p.holes.map(h => ({ n: h.n, targetText: h.targetText, strip: h.strip, missText: h.missText, green: h.green, cue: h.cue,
       danger: h.danger, why: h.why, history: h.history, shots: h.shots.map(s => s.text) })) };

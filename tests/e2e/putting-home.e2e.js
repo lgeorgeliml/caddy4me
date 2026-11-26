@@ -27,13 +27,14 @@ const SC = d => __dirname + '/../fixtures/scores/caddy4me-scores-' + d + '.json'
   // ---- Home: backups gone, last-5 card ----
   check(await p.locator('[data-a="export"]').count() === 0 && await p.locator('#restorefile').count() === 0, 'Home no longer has Export or Restore backup');
   check(await p.locator('.lastround').count() === 0, 'last-round card removed from Home');
-  check(/LAST 5 ROUNDS/.test(await txt('#home5')) && /Finish 2 more 18-hole rounds/.test(await txt('#home5')), 'Home card asks for 2 rounds when there are none');
+  // v0.11 (9-hole rounds, decisions 2-4): a Last 5 card with no finished round of its length is hidden
+  check(await p.locator('#home5').count() === 0 && await p.locator('#home9').count() === 0, 'Home shows no Last 5 card when there are no finished rounds');
   // ---- Settings: backup section ----
   await p.click('[data-a="settings"]');
   check(await p.locator('#exportbtn').count() === 1 && await p.locator('#restorefile').count() === 1, 'Settings has Export and Restore backup');
   const [dl] = await Promise.all([p.waitForEvent('download'), p.click('#exportbtn')]);
   check(/caddy4me-backup-.*\.json/.test(dl.suggestedFilename()), 'Export backup downloads from Settings');
-  check(/Caddy4Me v0\.10 · 15 Nov 2026/.test(await txt('#appver')), 'version v0.10 in Settings');
+  check(/Caddy4Me v0\.11 · 26 Nov 2026/.test(await txt('#appver')), 'version v0.11 in Settings');
   await p.click('[data-a="home"]');
 
   // ---- import the three MiScore rounds ----
@@ -41,6 +42,8 @@ const SC = d => __dirname + '/../fixtures/scores/caddy4me-scores-' + d + '.json'
     await p.click('[data-a="past"]');
     await p.setInputFiles('#impfile', SC(d)); await p.waitForTimeout(300);
     await p.click('[data-a="home"]');
+    if (d === '2026-10-18') check(/LAST 5 ROUNDS/.test(await txt('#home5')) && /Finish 1 more 18-hole round /.test(await txt('#home5')) && await p.locator('#home9').count() === 0,
+      'with 1 finished round the Home card asks for 1 more, and there is no Last 5 nines card');
   }
   const h5 = await txt('#home5'); let h5b;
   check((await p.locator('#home5 .bar5').count()) === 3, 'Home chart shows the 3 rounds');

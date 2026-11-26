@@ -8,6 +8,9 @@
  * Runners compare only the fields present in `expected`; numbers may differ by up to `tol` (default 0).
  * Expected answers come from the prototype's logic, which is what has been tested on the course.
  * After the first set, cases change only through a signed-off spec (see the cases repo README).
+ * New cases are always appended at the end of their suite, so earlier ids stay the same (1.7.0: 9-hole rounds and the
+ * Consistency Factor, with 9-hole rounds in their own fixture, fixtures/nines.json).
+ *   CASES_VERSION=1.7.0 node tests/golf-cases/generate.js <cases checkout>
  */
 'use strict';
 const fs = require('fs');
@@ -105,6 +108,92 @@ Object.values(ROUNDS).forEach(r => r.holes.forEach(h => {
 }));
 write('fixtures/rounds.json', ROUNDS);
 
+/* 1.7.0: 9-hole rounds and the Consistency Factor (spec "9-hole rounds and the Consistency Factor", CAD-36, CAD-37, CAD-39).
+ * The nines George's 9-hole ratings were checked on in MiScore (CAD-39, 25 Nov 2026), at his default tees, with the daily
+ * handicap MiScore gave him at GA 16.6. The generator stops if the formula doesn't give MiScore's number. */
+const GA_NOW = 16.6;
+const CAD39 = [
+  { name: 'Melville Glades front nine (Melville Blue 1-9)', par: 36, scratch: 36, slope: 127, miScore: 9 },
+  { name: 'Melville Glades back nine (Melville Blue 10-18)', par: 36, scratch: 36, slope: 121, miScore: 8 },
+  { name: 'Wembley Old front nine (Green Hole 1-9)', par: 36, scratch: 34.5, slope: 121, miScore: 7 },
+  { name: 'Wembley Old back nine (Green Hole 10-18)', par: 36, scratch: 34.5, slope: 112, miScore: 6 },
+  { name: 'Wembley Tuart front nine (Green Hole 1-9)', par: 35, scratch: 33.5, slope: 114, miScore: 6 },
+  { name: 'Wembley Tuart back nine (Green Hole 10-18)', par: 35, scratch: 33, slope: 110, miScore: 6 },
+  { name: 'Marangaroo front nine (Blue Hole 1-9)', par: 36, scratch: 34.5, slope: 108, miScore: 6 },
+  { name: 'Marangaroo back nine (Blue Hole 10-18)', par: 36, scratch: 34, slope: 104, miScore: 5 },
+  { name: 'Point Walter, one time round (Blue Hole 1-9)', par: 35, scratch: 33.5, slope: 115, miScore: 6 },
+  { name: 'Fremantle Public, one time round (Blue Hole 1-9)', par: 34, scratch: 31, slope: 108, miScore: 5 },
+  { name: 'Collier Park Pines (Pines White)', par: 36, scratch: 35.5, slope: 117, miScore: 8 },
+  { name: 'Collier Park Island (Island White)', par: 36, scratch: 36, slope: 127, miScore: 9 },
+  { name: 'Collier Park Lake (Lakes White)', par: 35, scratch: 34.5, slope: 119, miScore: 8 }
+];
+// the checked 18-hole tee sets of Phase 3 (CAD-32) with MiScore's daily handicap at GA 16.6 (Wembley Tuart Green 12 needs the factor)
+const TEES32 = [
+  { name: 'Melville Glades Blue Men', slope: 124, scratch: 72, par: 72, miScore: 17 },
+  { name: 'Wembley Old Green', slope: 116, scratch: 69, par: 72, miScore: 13 },
+  { name: 'Wembley Tuart Green', slope: 112, scratch: 67, par: 70, miScore: 12 },
+  { name: 'Point Walter Blue (the 9 twice)', slope: 115, scratch: 68, par: 70, miScore: 14 },
+  { name: 'Fremantle Public Blue (the 9 twice)', slope: 108, scratch: 62, par: 68, miScore: 9 },
+  { name: 'Marangaroo Blue', slope: 106, scratch: 69, par: 72, miScore: 12 },
+  { name: 'Collier Park White, Pines + Island', slope: 122, scratch: 72, par: 72, miScore: 17 },
+  { name: 'Collier Park White, Pines + Lake', slope: 118, scratch: 70, par: 71, miScore: 15 },
+  { name: 'Collier Park White, Island + Lake', slope: 123, scratch: 71, par: 71, miScore: 17 }
+];
+CAD39.forEach(x => { const d = E.dailyHandicap9(GA_NOW, x.slope, x.scratch, x.par); if (d !== x.miScore) throw new Error(x.name + ': 9-hole formula gives ' + d + ', MiScore ' + x.miScore); });
+TEES32.forEach(x => { const d = E.dailyHandicap(GA_NOW, x.slope, x.scratch, x.par); if (d !== x.miScore) throw new Error(x.name + ': formula gives ' + d + ', MiScore ' + x.miScore); });
+const nineDH = name => CAD39.filter(x => x.name.indexOf(name) === 0)[0].miScore;
+// the nines with their 18-hole stroke indexes: Melville from the card, Point Walter's first time round and Collier Pines
+// (Pines + Island order, decision 13 confirmed in MiScore) from the Perth course books
+const NINE_SI = {
+  'melville-front': E.COURSE.si.slice(0, 9), 'melville-back': E.COURSE.si.slice(9, 18),
+  'point-walter': BOOKS['point-walter'] ? BOOKS['point-walter'].holes.slice(0, 9).map(h => h.si) : null,
+  'collier-pines': BOOKS['collier-park-pines-island'] ? BOOKS['collier-park-pines-island'].holes.slice(0, 9).map(h => h.si) : null
+};
+const NINE_PARS = {
+  'melville-front': E.COURSE.pars.slice(0, 9), 'melville-back': E.COURSE.pars.slice(9, 18),
+  'point-walter': BOOKS['point-walter'] ? BOOKS['point-walter'].holes.slice(0, 9).map(h => h.par) : null,
+  'collier-pines': BOOKS['collier-park-pines-island'] ? BOOKS['collier-park-pines-island'].holes.slice(0, 9).map(h => h.par) : null
+};
+// 9-hole rounds (fixtures/nines.json). Kept out of fixtures/rounds.json, because the existing analysis and strategy cases read
+// every round there. Each round keeps 18 hole entries in order with the other nine blank, as both apps store it (format 1.3).
+function synthNine(key, o) {
+  let s = o.seed; const rnd = () => (s = (s * 9301 + 49297) % 233280) / 233280;
+  const g = E.nineRange(o.nine), pars = o.pars18, sis = o.si18;
+  const strokes = E.strokesOnNine(o.dailyHcp, sis.slice(g[0], g[1]));
+  const holes = pars.map((par, i) => {
+    const blank = { n: i + 1, par, si: sis[i], score: null, putts: null, approach: null, upDown: null, sand: 0, penalties: 0, wasted: 0 };
+    if (i < g[0] || i >= g[1]) return blank;
+    const gir = rnd() < 0.35, putts = gir ? (rnd() < 0.2 ? 3 : rnd() < 0.3 ? 1 : 2) : (rnd() < 0.15 ? 3 : rnd() < 0.4 ? 1 : 2);
+    const score = Math.max(2, par + (gir ? putts - 2 : 1 + Math.floor(rnd() * 3)) + (rnd() < 0.08 ? 1 : 0));
+    const h = Object.assign(blank, { score, putts, gir,
+      fairway: par >= 4 ? ['hit', 'left', 'right'][Math.floor(rnd() * 3)] : null,
+      approach: gir ? 'hit' : APPR[Math.floor(rnd() * APPR.length)],
+      upDown: gir ? null : rnd() < 0.3, sand: rnd() < 0.15 ? 1 : 0, penalties: rnd() < 0.12 ? 1 : 0, wasted: rnd() < 0.35 ? 1 : 0,
+      firstPutt: gir ? E.PUTT_BANDS[Math.floor(rnd() * 5)][0] : null });
+    if (h.approach === 'hit' && !gir) h.approach = 'short';
+    if (h.sand) h.sandSave = rnd() < 0.3;
+    if ((o.pickups || []).indexOf(i + 1) >= 0) {   // picked up: net double bogey, 0 points, putts kept (as an imported MiScore card)
+      Object.assign(h, { pickup: true, score: par + 2 + strokes[i - g[0]], fairway: null, approach: null, upDown: null, sandSave: null, gir: false, firstPutt: null });
+    }
+    h.points = h.pickup ? 0 : E.stablefordPoints(par, h.score, strokes[i - g[0]]);
+    return h;
+  });
+  return { id: o.date + 'T07:30:00.000Z', date: o.date, courseId: o.courseId, nine: o.nine, dailyHcp: o.dailyHcp, holes };
+}
+const NINE_ROUNDS = {};
+if (NINE_SI['point-walter'] && NINE_SI['collier-pines']) {
+  const pw = BOOKS['point-walter'].holes, cp = BOOKS['collier-park-pines-island'].holes;
+  [
+    ['melville-front', { date: '2026-11-29', courseId: 'melville-glades', nine: 'front', pars18: E.COURSE.pars, si18: E.COURSE.si, dailyHcp: nineDH('Melville Glades front'), seed: 4321 }],
+    ['melville-back', { date: '2026-12-02', courseId: 'melville-glades', nine: 'back', pars18: E.COURSE.pars, si18: E.COURSE.si, dailyHcp: nineDH('Melville Glades back'), seed: 5432 }],
+    ['point-walter', { date: '2026-12-06', courseId: 'point-walter', nine: 'front', pars18: pw.map(h => h.par), si18: pw.map(h => h.si), dailyHcp: nineDH('Point Walter'), seed: 6543 }],
+    ['collier-pines', { date: '2026-12-09', courseId: 'collier-park', nine: 'front', pars18: cp.map(h => h.par), si18: cp.map(h => h.si), dailyHcp: nineDH('Collier Park Pines'), seed: 7654 }],
+    ['melville-back-pickups', { date: '2026-12-13', courseId: 'melville-glades', nine: 'back', pars18: E.COURSE.pars, si18: E.COURSE.si, dailyHcp: nineDH('Melville Glades back'), seed: 8765, pickups: [12, 16] }],
+    ['melville-front-plus', { date: '2026-12-16', courseId: 'melville-glades', nine: 'front', pars18: E.COURSE.pars, si18: E.COURSE.si, dailyHcp: -1, seed: 9876 }]
+  ].forEach(([key, o]) => { NINE_ROUNDS[key] = synthNine(key, o); });
+  write('fixtures/nines.json', NINE_ROUNDS);
+}
+
 /* ---------- handicap ---------- */
 {
   const cases = [];
@@ -114,7 +203,35 @@ write('fixtures/rounds.json', ROUNDS);
   [-4, -1, 0, 1, 9, 17, 18, 19, 27, 36, 40].forEach(dh => [1, 2, 9, 17, 18].forEach(si => {
     cases.push({ fn: 'strokesOnHole', input: { dailyHcp: dh, si }, expected: E.strokesOnHole(dh, si) });
   }));
-  suite('handicap', 'Daily handicap (GA formula) and strokes received per hole', cases);
+  // 1.7.0 (added at the end so earlier ids stay the same). The Consistency Factor: input factor "men" or "women", missing = men.
+  // The 40 cases above have no factor and give the same answers with the men's factor (checked 25 Nov 2026).
+  TEES32.forEach(x => cases.push({ fn: 'dailyHandicap', input: { ga: GA_NOW, slope: x.slope, scratch: x.scratch, par: x.par }, expected: E.dailyHandicap(GA_NOW, x.slope, x.scratch, x.par), note: x.name + ' (CAD-32, MiScore ' + x.miScore + ')' }));
+  const GRID_GA = [-2, 0, 5.4, 9.9, 12, 16.9, 18.3, 24, 36, 54], GRID18 = [[113, 72], [124, 72], [135, 71.2], [124, 74]];
+  GRID_GA.forEach(ga => GRID18.forEach(([slope, scratch]) => {
+    cases.push({ fn: 'dailyHandicap', input: { ga, slope, scratch, par: 72, factor: 'women' }, expected: E.dailyHandicap(ga, slope, scratch, 72, 'women') });
+  }));
+  // the first 10 inputs (GA 0.0 to 54.0 in steps of 0.1, then the 4 ratings above) where the men's factor moves the result across .5
+  const crossing = [];
+  for (let k = 0; k <= 540 && crossing.length < 10; k++) {
+    const ga = k / 10;
+    GRID18.forEach(([slope, scratch]) => {
+      const plain = Math.round((ga * slope / 113 + (scratch - 72)) * 0.93);
+      if (crossing.length < 10 && E.dailyHandicap(ga, slope, scratch, 72, 'men') !== plain) crossing.push({ ga, slope, scratch, plain });
+    });
+  }
+  crossing.forEach(x => cases.push({ fn: 'dailyHandicap', input: { ga: x.ga, slope: x.slope, scratch: x.scratch, par: 72, factor: 'men' }, expected: E.dailyHandicap(x.ga, x.slope, x.scratch, 72, 'men'), note: x.plain + ' without the Consistency Factor' }));
+  // GA's 9-hole daily handicap: the same GA values on 4 nine ratings at par 36, 10 with the women's factor, and the 13 checked nines
+  const GRID9 = [[113, 36], [124, 36], [135, 35.5], [124, 37]];
+  GRID_GA.forEach(ga => GRID9.forEach(([slope, scratch]) => {
+    cases.push({ fn: 'dailyHandicap9', input: { ga, slope, scratch, par: 36 }, expected: E.dailyHandicap9(ga, slope, scratch, 36) });
+  }));
+  GRID_GA.forEach(ga => cases.push({ fn: 'dailyHandicap9', input: { ga, slope: 124, scratch: 36, par: 36, factor: 'women' }, expected: E.dailyHandicap9(ga, 124, 36, 36, 'women') }));
+  CAD39.forEach(x => cases.push({ fn: 'dailyHandicap9', input: { ga: GA_NOW, slope: x.slope, scratch: x.scratch, par: x.par }, expected: E.dailyHandicap9(GA_NOW, x.slope, x.scratch, x.par), note: x.name + ' (CAD-39, MiScore ' + x.miScore + ')' }));
+  // strokes on each hole of a nine, in the nine's 18-hole stroke index order (input si: the 9 holes' 18-hole SIs, in hole order)
+  if (NINE_SI['point-walter']) [['melville-front', 'Melville Glades front nine'], ['melville-back', 'Melville Glades back nine'], ['point-walter', 'Point Walter, first time round'], ['collier-pines', 'Collier Park Pines, Pines + Island order']].forEach(([k, label]) => {
+    [-2, -1, 0, 1, 4, 5, 8, 9, 10, 17, 18, 19].forEach(dh => cases.push({ fn: 'strokesOnNine', input: { dailyHcp: dh, si: NINE_SI[k] }, expected: E.strokesOnNine(dh, NINE_SI[k]), note: label }));
+  });
+  suite('handicap', 'Daily handicap (GA formula, from 1.7.0 with the Consistency Factor), the 9-hole daily handicap and strokes received per hole and on a nine', cases);
 }
 /* ---------- stableford ---------- */
 {
@@ -167,7 +284,13 @@ write('fixtures/rounds.json', ROUNDS);
       cases.push({ fn: 'roundSummary', input: { round: key, holes: [a + 1, b] }, expected: pick(t, ['holes', 'score', 'par', 'putts', 'points', 'gir', 'fwHit', 'fw']) });
     });
   });
-  suite('rounds', 'Hole stats and round summaries (rounds from fixtures/rounds.json, holes with points already filled in)', cases);
+  // 1.7.0 (added at the end): 9-hole rounds from fixtures/nines.json (input nineRound), all 18 hole entries with the other nine blank
+  Object.entries(NINE_ROUNDS).forEach(([key, r]) => {
+    const s = E.roundSummary(r.holes);
+    cases.push({ fn: 'roundSummary', input: { nineRound: key }, expected: pick(s, ['holes', 'statHoles', 'pickups', 'score', 'par', 'toPar', 'putts', 'gir', 'girPct', 'fw', 'fwHit', 'fwPct', 'ud', 'udMade', 'udPct',
+      'sandAtt', 'sandSaved', 'sandShots', 'wasted', 'penalties', 'chipIns', 'points', 'puttsPerGir', 'miss', 'putting']) });
+  });
+  suite('rounds', 'Hole stats and round summaries (rounds from fixtures/rounds.json, holes with points already filled in; from 1.7.0 9-hole rounds from fixtures/nines.json, input nineRound)', cases);
 }
 /* ---------- last 5 rounds analysis ---------- */
 {
@@ -185,7 +308,26 @@ write('fixtures/rounds.json', ROUNDS);
     }
     cases.push({ fn: 'analyseRounds', input: { rounds: ks, n: 5 }, expected: exp, tol: 0.05 });
   });
-  suite('analysis', 'Last 5 rounds analysis: averages, trend and top-3 suggestions', cases);
+  // 1.7.0 (added at the end): Last 5 nines (input nineRounds: keys in fixtures/nines.json), and each panel ignoring the other length
+  function analysisExp(a) {
+    const exp = { count: a.count, enough: a.enough };
+    if (a.enough) {
+      exp.roundsUsed = a.rounds.map(r => r.date);
+      exp.avg = pick(a.avg, ['pts', 'gross', 'toPar', 'putts', 'three', 'ppg', 'girPct', 'fwPct', 'udPct', 'sandPct', 'pen', 'wasted', 'shortShare', 'leftShare', 'rightShare', 'putting']);
+      exp.trendPts = a.trend.pts;
+      exp.suggestions = a.suggestions.map(x => ({ key: x.key, shots: x.shots }));
+    }
+    return exp;
+  }
+  const nk = Object.keys(NINE_ROUNDS);
+  [nk.slice(0, 0), nk.slice(0, 1), nk.slice(0, 2), nk.slice(0, 5), nk].forEach(ns => {
+    cases.push({ fn: 'analyseNines', input: { nineRounds: ns, rounds: [], n: 5 }, expected: analysisExp(E.analyseNines(ns.map(k => NINE_ROUNDS[k]), 5)), tol: 0.05 });
+  });
+  cases.push({ fn: 'analyseNines', input: { nineRounds: nk, rounds: keys, n: 5 }, expected: analysisExp(E.analyseNines(nk.map(k => NINE_ROUNDS[k]).concat(keys.map(k => ROUNDS[k])), 5)), tol: 0.05 });
+  [keys, keys.slice(0, 2)].forEach(ks => {
+    cases.push({ fn: 'analyseRounds', input: { rounds: ks, nineRounds: nk, n: 5 }, expected: analysisExp(E.analyseRounds(ks.map(k => ROUNDS[k]).concat(nk.map(k => NINE_ROUNDS[k])), 5)), tol: 0.05 });
+  });
+  suite('analysis', 'Last 5 rounds analysis: averages, trend and top-3 suggestions; from 1.7.0 Last 5 nines (analyseNines, input nineRounds from fixtures/nines.json), each ignoring rounds of the other length', cases);
 }
 /* ---------- course geometry ---------- */
 {
@@ -219,19 +361,36 @@ function r6(x) { return Math.round(x * 1e6) / 1e6; }
   ['bogey', 'points', 'attack'].forEach(mode => ['default', 'long-hitter', 'no-hybrid'].forEach(bag => [17, 5].forEach(dh => configs.push({ mode, bag, dh, rounds: 'none', noElevation: false, book: 'melville-glades-map' }))));
   // 1.5.0 (added at the end): the Perth course books, default bag, in 3 modes at the daily handicap there and 5
   COURSE_BOOKS.forEach(cb => ['bogey', 'points', 'attack'].forEach(mode => [cb.dailyHcp, 5].forEach(dh => configs.push({ mode, bag: 'default', dh, rounds: 'none', noElevation: false, book: cb.book, parsSi: 'book' }))));
+  // 1.7.0 (added at the end): plans on a nine (input nine, dailyHcp = the 9-hole daily handicap, strokes as strokesOnNine) on the
+  // Melville book's front and back nines and Point Walter's one time round, at George's checked 9-hole daily handicap there and 3;
+  // then Wembley Tuart at its new 12 with the Consistency Factor (fixtures/course-books.json keeps 13, so the 1.5.0 cases stay as they were)
+  if (BOOKS['point-walter']) {
+    [['melville-glades', 'front', nineDH('Melville Glades front'), false], ['melville-glades', 'back', nineDH('Melville Glades back'), false], ['point-walter', 'front', nineDH('Point Walter'), true]]
+      .forEach(([book, nine, dh9, own]) => ['bogey', 'points', 'attack'].forEach(mode => [dh9, 3].forEach(dh => {
+        const cfg = { mode, bag: 'default', dh, rounds: 'none', noElevation: false, book, nine };
+        if (own) cfg.parsSi = 'book';
+        configs.push(cfg);
+      })));
+  }
+  if (BOOKS['wembley-tuart']) {
+    const tuart = E.dailyHandicap(GA_NOW, 112, 67, 70);   // 12 (13 without the Consistency Factor)
+    ['bogey', 'points', 'attack'].forEach(mode => configs.push({ mode, bag: 'default', dh: tuart, rounds: 'none', noElevation: false, book: 'wembley-tuart', parsSi: 'book' }));
+  }
   configs.forEach(cfg => {
     const bookId = cfg.book || 'melville-glades';
     const ownCard = cfg.parsSi === 'book'; // the book's own pars and stroke indexes, not Melville's card
     const st = ST.buildStrategy({ book: BOOKS[bookId], bag: BAGS[cfg.bag], mode: cfg.mode, dailyHcp: cfg.dh, pars: ownCard ? [] : E.COURSE.pars, si: ownCard ? [] : E.COURSE.si,
-      rounds: roundSets[cfg.rounds].map(k => ROUNDS[k]), strokesOnHole: E.strokesOnHole, dailyHcpFor: r => r.dailyHcp, thoughts: [], noElevation: cfg.noElevation });
+      rounds: roundSets[cfg.rounds].map(k => ROUNDS[k]), strokesOnHole: E.strokesOnHole, dailyHcpFor: r => r.dailyHcp, thoughts: [], noElevation: cfg.noElevation,
+      nine: cfg.nine, strokesOnNine: E.strokesOnNine });
     st.holes.forEach(h => {
       const input = { book: bookId, bag: cfg.bag, mode: cfg.mode, dailyHcp: cfg.dh, rounds: cfg.rounds, noElevation: cfg.noElevation, hole: h.n };
       if (ownCard) input.parsSi = 'book';
+      if (cfg.nine) input.nine = cfg.nine;
       cases.push({ fn: 'buildStrategy.hole', input,
         expected: { target: h.target, strokes: h.strokes, miss: h.miss, reached: h.reached, rise: h.rise, shots: h.shots.map(x => ({ kind: x.kind, club: x.club })) } });
     });
   });
-  suite('strategy', 'Course strategy per hole: target, handicap shots, shot plan (kind + club) and safe miss. Wording is not compared. Books: melville-glades, from 1.4.0 melville-glades-map (no aim line, slope, wind, extra hazards, tips or green notes), and from 1.5.0 the Perth course books in fixtures/course-books.json (input parsSi "book": the book\'s own pars and stroke indexes).', cases);
+  suite('strategy', 'Course strategy per hole: target, handicap shots, shot plan (kind + club) and safe miss. Wording is not compared. Books: melville-glades, from 1.4.0 melville-glades-map (no aim line, slope, wind, extra hazards, tips or green notes), and from 1.5.0 the Perth course books in fixtures/course-books.json (input parsSi "book": the book\'s own pars and stroke indexes). From 1.7.0 plans on a nine (input nine "front" or "back", dailyHcp the 9-hole daily handicap, the nine\'s strokes as strokesOnNine).', cases);
 }
 
 /* ---------- rules (1.1.0) ---------- */

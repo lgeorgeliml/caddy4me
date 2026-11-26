@@ -1,5 +1,5 @@
 /* Caddy4Me prototype browser test - run with: node tests/e2e/run.js
- * Backup format (golf cases 1.3.0, format 1.1 from 1.4.0, format 1.2 from 1.6.0; backup/FORMAT.md): the prototype's Restore accepts every shared sample,
+ * Backup format (golf cases 1.3.0, format 1.1 from 1.4.0, format 1.2 from 1.6.0, format 1.3 from 1.7.0; backup/FORMAT.md): the prototype's Restore accepts every shared sample,
  * keeps fields it doesn't know (a newer prototype or the Android app wrote them), and its Export matches the schema.
  * Needs the pinned golf cases in ./golf-cases (as in CI) or GOLF_CASES_DIR. */
 const { chromium } = require(process.env.PLAYWRIGHT_PATH || 'playwright');
@@ -65,6 +65,16 @@ const TILE = fs.readFileSync(__dirname + '/../fixtures/tile.png');
       check(pd.settings && pd.settings.lastCourseId === 'collier-park' && cs['collier-park'] && cs['collier-park'].layout.join('+') === 'Pines+Lake'
         && Array.isArray(pd.holeNotes) && pd.holeNotes.length === 2 && (pd.dayPins || []).some(d => d.ref === 'L1') && out.formatVersion === '1.2',
         f + ': per-course settings, notes on other courses and day-pin refs survive Restore → Export');
+    }
+    if (f === 'nines-1.3.json') {   // golf cases 1.7.0, format 1.3: 9-hole rounds (nine, one-nine layout, course.nines)
+      const pr = out.product && out.product.rounds || {};
+      const nines = out.rounds.filter(r => r.nine).map(r => r.nine).join(',');
+      check(nines === sample.rounds.filter(r => r.nine).map(r => r.nine).join(',') && out.rounds.every(r => r.holes.length === 18)
+        && Object.keys(pr).some(k => (pr[k].layout || []).join('+') === 'Pines') && out.course.nines && out.course.nines.front.slope === 127 && out.formatVersion === '1.3',
+        f + ': 9-hole rounds (nine, 18 hole entries, one-nine layout) and the nine ratings survive Restore → Export');
+      await p.click('[data-a="home"]');
+      check(/LAST 5 NINES/.test(await p.textContent('#home9')) && (await p.locator('#home9 .bar5').count()) === 4, f + ': Home shows Last 5 nines from the 4 restored nines');
+      await p.click('[data-a="settings"]');
     }
     if (f === 'v02-offcourse-si.json') {
       check(out.course.siSource === 'miscore-blue' && out.course.slope === 124 && out.course.scratch === 72, f + ': old course data upgraded on Restore');
